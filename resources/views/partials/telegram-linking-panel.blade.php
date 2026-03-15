@@ -278,6 +278,7 @@
                     action="{{ route('telegram.connect') }}"
                     data-telegram-submit
                     data-telegram-submit-message="Opening Telegram so you can link your account..."
+                    data-telegram-connect
                 >
                     @csrf
                     <button type="submit" class="btn telegram-submit-button">

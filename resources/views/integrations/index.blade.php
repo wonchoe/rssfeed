@@ -202,6 +202,47 @@
                     return;
                 }
 
+                // Connect form: open link in new window so the current session stays intact
+                if (form.hasAttribute('data-telegram-connect')) {
+                    event.preventDefault();
+
+                    const button = event.submitter || form.querySelector('button[type="submit"]');
+                    if (button) {
+                        button.disabled = true;
+                        button.classList.add('is-loading');
+                    }
+
+                    fetch(form.action, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        },
+                        body: new FormData(form),
+                    })
+                    .then((res) => res.json())
+                    .then((payload) => {
+                        if (payload.url) {
+                            window.open(payload.url, '_blank', 'noopener,noreferrer');
+                        } else if (payload.error) {
+                            alert(payload.error);
+                        }
+                    })
+                    .catch(() => {
+                        alert('Could not generate connect link. Please try again.');
+                    })
+                    .finally(() => {
+                        if (button) {
+                            button.disabled = false;
+                            button.classList.remove('is-loading');
+                        }
+                    });
+
+                    return;
+                }
+
                 setTelegramRequestState(form, event.submitter);
             });
 

@@ -7,17 +7,26 @@ use App\Models\TelegramChat;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
 
 class TelegramIntegrationController extends Controller
 {
-    public function connect(Request $request, TelegramLinkingService $telegramLinkingService): RedirectResponse
+    public function connect(Request $request, TelegramLinkingService $telegramLinkingService): Response
     {
         try {
             $connectUrl = $telegramLinkingService->createConnectUrl($request->user());
         } catch (RuntimeException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => $exception->getMessage()], 422);
+            }
+
             return back()->withErrors([
                 'telegram' => $exception->getMessage(),
             ]);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['url' => $connectUrl]);
         }
 
         return redirect()->away($connectUrl);
