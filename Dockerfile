@@ -43,9 +43,11 @@ RUN docker-php-ext-configure intl \
         ctype \
         fileinfo
 
-# Redis PECL extension
-RUN pecl install redis \
+# Redis PECL extension (autoconf + php-dev needed to compile)
+RUN apk add --no-cache autoconf g++ make \
+ && pecl install redis \
  && docker-php-ext-enable redis \
+ && apk del autoconf g++ make \
  && rm -rf /tmp/pear
 
 # Composer
