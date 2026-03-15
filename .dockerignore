@@ -14,7 +14,6 @@ bootstrap/cache/*
 *.sql
 .DS_Store
 Thumbs.db
-docker
 .dockerignore
 tests
 README.md
