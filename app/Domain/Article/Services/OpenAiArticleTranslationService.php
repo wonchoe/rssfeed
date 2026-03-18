@@ -446,10 +446,29 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
         // Strip metadata lines that Jina sometimes prepends
         $markdown = (string) preg_replace('/^(Published Time|URL Source|Markdown Content):.*$/m', '', $markdown);
 
+        // Remove avatar images (small profile pics)
+        $markdown = (string) preg_replace('/!\[Image \d+:.*?avatar\]\([^)]+\)/i', '', $markdown);
+        // Remove generic numbered placeholder images with no meaningful alt text
+        $markdown = (string) preg_replace('/!\[Image \d+\]\([^)]+\)/i', '', $markdown);
+
+        // Remove "Follow" links/buttons
+        $markdown = (string) preg_replace('/\[.*?Follow\]\([^)]+\)/i', '', $markdown);
+
+        // Remove upvote/like patterns
+        $markdown = (string) preg_replace('/\[-?\s*\[x?\]\s*Upvote\s*\d*\]\([^)]+\)/i', '', $markdown);
+        $markdown = (string) preg_replace('/\[Upvote\s*\d*\]\([^)]+\)/i', '', $markdown);
+
+        // Remove user profile card patterns (name + handle on same line)
+        $markdown = (string) preg_replace('/^\s*\[.*?\b(Follow)\b.*?\]\([^)]+\)\s*$/mi', '', $markdown);
+
+        // Remove lines that are just "+N" (avatar overflow counters)
+        $markdown = (string) preg_replace('/^\s*\+\d+\s*$/m', '', $markdown);
+
         $lines = explode("\n", $markdown);
         $cleaned = [];
         $inArticle = false;
         $passedFirstH1 = false;
+        $headerNoiseCount = 0;
         $skipPatterns = [
             '/^top of page$/i',
             '/^bottom of page$/i',
@@ -457,6 +476,20 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             '/^Search$/i',
             '/^\*\s+More\s*$/i',
             '/^\*\s+\[All Posts\]/i',
+        ];
+
+        $noisePatterns = [
+            '/^\*?\s*\[?.*avatar.*\]?\s*$/i',
+            '/^\s*\w+\s+\w+\s+Follow\s*$/i',          // "Name Handle Follow"
+            '/^\s*\[\w+\]\(https:\/\/.*\/\w+\)\s*$/i', // bare profile links
+            '/^\s*Enterprise\+?Article\s*$/i',
+            '/\bFollow\s*$/i',
+            '/^\s*Upvote\s*\d*\s*$/i',
+            '/^\s*Like\s*\d*\s*$/i',
+            '/^\s*Share\s*$/i',
+            '/^\s*Repost\s*$/i',
+            '/^\s*Published\s+\d+\s+(hours?|days?|weeks?|months?)\s+ago\s*$/i',
+            '/^\s*\d+\s+min\s+read\s*$/i',
         ];
 
         foreach ($lines as $line) {
@@ -474,15 +507,47 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
                 continue;
             }
 
-            // Start capturing after the second H1 (first is site title, second is article title)
+            // Start capturing after the first H1 that looks like an article title
             if (preg_match('/^# /', $trimmed)) {
                 if (! $passedFirstH1) {
                     $passedFirstH1 = true;
+                    // Could be site title or article title — skip it (title comes from metadata)
                     continue;
                 }
                 $inArticle = true;
-                // Don't include the H1 in content — it becomes the title
                 continue;
+            }
+
+            // Before article body starts, skip noise aggressively (bylines, dates, avatars)
+            if ($passedFirstH1 && ! $inArticle) {
+                $headerNoiseCount++;
+                // After the first H1, look for H2 as the real content start
+                if (preg_match('/^## /', $trimmed)) {
+                    $inArticle = true;
+                    $cleaned[] = $line;
+                    continue;
+                }
+                // Allow max 30 lines of noise, then start treating as content
+                if ($headerNoiseCount > 30 && strlen($trimmed) > 80) {
+                    $inArticle = true;
+                    $cleaned[] = $line;
+                    continue;
+                }
+                continue;
+            }
+
+            // Skip noise patterns once in article
+            if ($inArticle) {
+                $isNoise = false;
+                foreach ($noisePatterns as $pattern) {
+                    if (preg_match($pattern, $trimmed)) {
+                        $isNoise = true;
+                        break;
+                    }
+                }
+                if ($isNoise) {
+                    continue;
+                }
             }
 
             // Skip author byline block (usually right after second H1)
@@ -491,10 +556,9 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             }
 
             // Stop at footer sections (generic patterns)
-            if ($inArticle && preg_match('/^#{1,6}\s+(Recent Posts|Related Posts|More Articles|Comments|Share this|Copyright|Terms of Service|Privacy Policy)$/i', $trimmed)) {
+            if ($inArticle && preg_match('/^#{1,6}\s+(Recent Posts|Related Posts|More Articles|Comments|Share this|Copyright|Terms of Service|Privacy Policy|Discussion|Responses|Leave a comment)$/i', $trimmed)) {
                 break;
             }
-            // Stop at "bottom of page" marker
             if ($inArticle && preg_match('/^bottom of page$/i', $trimmed)) {
                 break;
             }
@@ -502,6 +566,12 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             if ($inArticle) {
                 $cleaned[] = $line;
             }
+        }
+
+        // If we never entered article mode but have content after first H1, 
+        // fall back to everything after first H1
+        if (! $inArticle && $passedFirstH1) {
+            return trim(implode("\n", array_slice($lines, 1)));
         }
 
         return trim(implode("\n", $cleaned));
@@ -533,15 +603,28 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
         $contentSnippet = Str::limit($contentMarkdown, 60000, '');
 
         $systemPrompt = <<<PROMPT
-You are a professional translator. Translate the provided article into {$languageName}.
+You are a professional translator and content editor. Translate the provided article into {$languageName}.
 
-Rules:
+CRITICAL — CONTENT CLEANING:
+The source markdown may contain UI noise scraped from the webpage. You MUST strip all of the following before translating:
+- User avatars, profile pictures, and profile links
+- "Follow" buttons, "Upvote" buttons, like/share/repost UI elements
+- Author card blocks (avatar + name + handle + "Follow")
+- Byline metadata (publish dates, "X min read", view counts)
+- Navigation breadcrumbs, sidebar links, cookie banners
+- Comment sections, "Leave a reply" forms
+- Social sharing widgets
+- "+N" counters (e.g. "+18" next to avatar lists)
+- Any placeholder images with alt text like "Image 1", "Image 2" etc. that are clearly avatars or icons
+Only keep images that are actual article illustrations, diagrams, screenshots, or charts.
+
+TRANSLATION RULES:
 - Return ONLY a JSON object with "title" and "content_html" keys.
-- Translate the ENTIRE article faithfully. Do NOT shorten, summarize, or skip any sections.
+- Translate the ENTIRE article body faithfully. Do NOT shorten, summarize, or skip any sections.
 - The translation should read naturally in {$languageName}, not as a word-for-word literal translation.
 - The content is provided in Markdown format. Convert it to clean HTML in the output.
-- Preserve ALL images exactly as they are: convert markdown images ![alt](url) to <img src="url" alt="alt"> tags.
-- Preserve ALL links: convert markdown links [text](url) to <a href="url" target="_blank">translated text</a> tags.
+- Preserve article images (diagrams, screenshots, charts) exactly: convert ![alt](url) to <img src="url" alt="alt"> tags.
+- Preserve ALL links: convert [text](url) to <a href="url" target="_blank">translated text</a> tags.
 - Preserve ALL YouTube or other embed URLs in links or iframes exactly as they are.
 - Use clean semantic HTML: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <blockquote>, <strong>, <em>, <code>, <pre>.
 - Keep proper paragraph breaks for readability.
