@@ -282,9 +282,13 @@ class SubscriptionController extends Controller
         if ($subscription->translate_enabled && $subscription->translate_language) {
             TranslateArticleJob::dispatch(
                 articleId: $article->id,
-                subscriptionId: $subscription->id,
                 language: $subscription->translate_language,
-                deliveryId: $delivery->id,
+                recipients: [
+                    [
+                        'subscription_id' => $subscription->id,
+                        'delivery_id' => $delivery->id,
+                    ],
+                ],
             )->onQueue('translation');
 
             return 'queued';

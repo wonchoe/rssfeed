@@ -5,6 +5,7 @@ namespace App\Domain\Article\Services;
 use App\Domain\Article\Contracts\ArticleTranslationService;
 use App\Models\Article;
 use App\Models\TranslatedArticle;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -21,32 +22,45 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             return $existing;
         }
 
-        $contentHtml = $this->fetchArticleContent($article);
+        $lockKey = "translate:{$article->id}:{$language}";
 
-        // Try Jina Reader for better content extraction
-        $markdown = $this->fetchViaJinaReader($article->canonical_url);
+        return Cache::lock($lockKey, 300)->block(300, function () use ($article, $language): TranslatedArticle {
+            // Re-check after acquiring lock — another worker may have finished
+            $existing = TranslatedArticle::query()
+                ->where('article_id', $article->id)
+                ->where('language', $language)
+                ->first();
 
-        if ($markdown !== null) {
-            $contentMarkdown = $this->cleanJinaMarkdown($markdown);
-            $translatedContent = $this->translateMarkdownViaOpenAi($article->title, $contentMarkdown, $language, $article->canonical_url);
-        } else {
-            $translatedContent = $this->translateViaOpenAi($article->title, $contentHtml, $language, $article->canonical_url);
-        }
+            if ($existing !== null) {
+                return $existing;
+            }
 
-        $slug = $this->generateSlug($article, $language);
+            // Try Jina Reader for better content extraction
+            $markdown = $this->fetchViaJinaReader($article->canonical_url);
 
-        return TranslatedArticle::query()->create([
-            'article_id' => $article->id,
-            'language' => $language,
-            'slug' => $slug,
-            'title' => $translatedContent['title'],
-            'content_html' => $translatedContent['content_html'],
-            'source_name' => $article->source?->domain ?? parse_url($article->canonical_url, PHP_URL_HOST),
-            'source_url' => $article->source?->canonical_url ?? $article->source?->source_url,
-            'original_url' => $article->canonical_url,
-            'image_url' => $article->image_url,
-            'translated_at' => now(),
-        ]);
+            if ($markdown !== null) {
+                $contentMarkdown = $this->cleanJinaMarkdown($markdown);
+                $translatedContent = $this->translateMarkdownViaOpenAi($article->title, $contentMarkdown, $language, $article->canonical_url);
+            } else {
+                $contentHtml = $this->fetchArticleContent($article);
+                $translatedContent = $this->translateViaOpenAi($article->title, $contentHtml, $language, $article->canonical_url);
+            }
+
+            $slug = $this->generateSlug($article, $language);
+
+            return TranslatedArticle::query()->create([
+                'article_id' => $article->id,
+                'language' => $language,
+                'slug' => $slug,
+                'title' => $translatedContent['title'],
+                'content_html' => $translatedContent['content_html'],
+                'source_name' => $article->source?->domain ?? parse_url($article->canonical_url, PHP_URL_HOST),
+                'source_url' => $article->source?->canonical_url ?? $article->source?->source_url,
+                'original_url' => $article->canonical_url,
+                'image_url' => $article->image_url,
+                'translated_at' => now(),
+            ]);
+        });
     }
 
     public function translateUrl(string $url, string $language): TranslatedArticle

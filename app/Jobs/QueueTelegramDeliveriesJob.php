@@ -71,6 +71,7 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
             ->keyBy('id');
 
         $queuedCount = 0;
+        $translationBatch = []; // keyed by "{articleId}-{language}"
 
         foreach ($subscriptions as $subscription) {
             foreach ($normalizedArticleIds as $articleId) {
@@ -108,12 +109,20 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
                 }
 
                 if ($subscription->translate_enabled && $subscription->translate_language) {
-                    TranslateArticleJob::dispatch(
-                        articleId: $article->id,
-                        subscriptionId: $subscription->id,
-                        language: $subscription->translate_language,
-                        deliveryId: $delivery->id,
-                    )->onQueue('translation');
+                    $batchKey = $article->id.'-'.$subscription->translate_language;
+
+                    if (! isset($translationBatch[$batchKey])) {
+                        $translationBatch[$batchKey] = [
+                            'article_id' => $article->id,
+                            'language' => $subscription->translate_language,
+                            'recipients' => [],
+                        ];
+                    }
+
+                    $translationBatch[$batchKey]['recipients'][] = [
+                        'subscription_id' => $subscription->id,
+                        'delivery_id' => $delivery->id,
+                    ];
                 } else {
                     SendTelegramMessageJob::dispatch(
                         subscriptionId: (string) $subscription->id,
@@ -130,6 +139,14 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
 
                 $queuedCount++;
             }
+        }
+
+        foreach ($translationBatch as $batch) {
+            TranslateArticleJob::dispatch(
+                articleId: $batch['article_id'],
+                language: $batch['language'],
+                recipients: $batch['recipients'],
+            )->onQueue('translation');
         }
 
         if ($queuedCount === 0) {
