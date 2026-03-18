@@ -550,7 +550,7 @@ PROMPT;
                 ->acceptJson()
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => $model,
-                    'max_tokens' => 16000,
+                    'max_completion_tokens' => 16000,
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
@@ -644,7 +644,7 @@ PROMPT;
                 ->acceptJson()
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => $model,
-                    'max_tokens' => 16000,
+                    'max_completion_tokens' => 16000,
                     'response_format' => ['type' => 'json_object'],
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
