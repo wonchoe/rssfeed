@@ -107,17 +107,26 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
                     ]);
                 }
 
-                SendTelegramMessageJob::dispatch(
-                    subscriptionId: (string) $subscription->id,
-                    articleUrl: $article->canonical_url,
-                    message: $article->title,
-                    context: [
-                        'delivery_id' => $delivery->id,
-                        'article_id' => $article->id,
-                        'source_id' => $this->sourceId,
-                        'pipeline_stage' => PipelineStage::Deliver->value,
-                    ],
-                )->onQueue('delivery');
+                if ($subscription->translate_enabled && $subscription->translate_language) {
+                    TranslateArticleJob::dispatch(
+                        articleId: $article->id,
+                        subscriptionId: $subscription->id,
+                        language: $subscription->translate_language,
+                        deliveryId: $delivery->id,
+                    )->onQueue('translation');
+                } else {
+                    SendTelegramMessageJob::dispatch(
+                        subscriptionId: (string) $subscription->id,
+                        articleUrl: $article->canonical_url,
+                        message: $article->title,
+                        context: [
+                            'delivery_id' => $delivery->id,
+                            'article_id' => $article->id,
+                            'source_id' => $this->sourceId,
+                            'pipeline_stage' => PipelineStage::Deliver->value,
+                        ],
+                    )->onQueue('delivery');
+                }
 
                 $queuedCount++;
             }

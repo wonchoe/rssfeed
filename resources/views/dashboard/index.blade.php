@@ -139,6 +139,9 @@
                                 @else
                                     <span class="badge badge-muted">Paused</span>
                                 @endif
+                                @if ($subscription->translate_enabled && $subscription->translate_language)
+                                    <span class="badge" style="background:rgba(93,168,255,0.12); color:#5da8ff; border:1px solid rgba(93,168,255,0.2); margin-left:4px;">🌐 {{ strtoupper($subscription->translate_language) }}</span>
+                                @endif
                             </td>
                             <td>
                                 <div class="subscription-actions">

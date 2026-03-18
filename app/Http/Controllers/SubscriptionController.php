@@ -44,6 +44,8 @@ class SubscriptionController extends Controller
             'target' => ['nullable', 'string', 'max:512'],
             'telegram_chat_id' => ['nullable', 'integer'],
             'polling_interval_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
+            'translate_enabled' => ['nullable', 'boolean'],
+            'translate_language' => ['nullable', 'string', 'max:10', 'in:uk,en,es,fr,de,it,pt,ja,ko,zh,ar,hi,pl,nl,tr,ru,sv,da,fi,no,cs,ro,hu,el,th,vi,id,ms,he,bg'],
             'created_from' => ['nullable', 'string', 'max:64'],
             'redirect_to' => ['nullable', 'string', 'max:255'],
         ]);
@@ -117,6 +119,8 @@ class SubscriptionController extends Controller
                 'telegram_chat_id' => $selectedTelegramChat?->id,
                 'target' => $normalizedTarget,
                 'is_active' => true,
+                'translate_enabled' => (bool) ($validated['translate_enabled'] ?? false),
+                'translate_language' => ($validated['translate_enabled'] ?? false) ? ($validated['translate_language'] ?? null) : null,
                 'config' => array_filter([
                     'created_from' => $validated['created_from'] ?? 'dashboard',
                     'telegram_chat_title' => $selectedTelegramChat?->displayName(),

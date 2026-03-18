@@ -22,6 +22,8 @@ class Subscription extends Model
         'target_hash',
         'target',
         'is_active',
+        'translate_enabled',
+        'translate_language',
         'config',
         'last_delivered_at',
     ];
@@ -33,6 +35,7 @@ class Subscription extends Model
     {
         return [
             'is_active' => 'boolean',
+            'translate_enabled' => 'boolean',
             'config' => 'array',
             'last_delivered_at' => 'datetime',
         ];

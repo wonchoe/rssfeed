@@ -3,9 +3,11 @@
 namespace App\Providers;
 
 use App\Domain\Article\Contracts\ArticleNormalizer;
+use App\Domain\Article\Contracts\ArticleTranslationService;
 use App\Domain\Article\Contracts\DeduplicationService;
 use App\Domain\Article\Services\DatabaseDeduplicationService;
 use App\Domain\Article\Services\DefaultArticleNormalizer;
+use App\Domain\Article\Services\OpenAiArticleTranslationService;
 use App\Domain\Delivery\Contracts\DeliveryDispatcher;
 use App\Domain\Delivery\Contracts\TelegramDeliveryService;
 use App\Domain\Delivery\Services\ChannelDeliveryDispatcher;
@@ -37,6 +39,7 @@ class DomainServiceProvider extends ServiceProvider
         $this->app->bind(AiSchemaResolver::class, AdaptiveAiSchemaResolver::class);
         $this->app->bind(SchemaValidator::class, BasicSchemaValidator::class);
         $this->app->bind(ArticleNormalizer::class, DefaultArticleNormalizer::class);
+        $this->app->bind(ArticleTranslationService::class, OpenAiArticleTranslationService::class);
         $this->app->bind(DeduplicationService::class, DatabaseDeduplicationService::class);
         $this->app->bind(SubscriptionRepository::class, EloquentSubscriptionRepository::class);
         $this->app->bind(TelegramDeliveryService::class, TelegramBotDeliveryService::class);

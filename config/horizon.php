@@ -100,6 +100,7 @@ return [
         'redis:default' => 60,
         'redis:ingestion' => 120,
         'redis:delivery' => 120,
+        'redis:translation' => 180,
         'redis:repair' => 180,
     ],
 
@@ -228,6 +229,20 @@ return [
             'backoff' => [10, 30, 60],
             'nice' => 0,
         ],
+        'supervisor-translation' => [
+            'connection' => 'redis',
+            'queue' => ['translation'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 3,
+            'timeout' => 200,
+            'backoff' => [15, 60, 180],
+            'nice' => 0,
+        ],
         'supervisor-repair' => [
             'connection' => 'redis',
             'queue' => ['repair'],
@@ -257,6 +272,12 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-translation' => [
+                'maxProcesses' => 4,
+                'minProcesses' => 1,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
             'supervisor-repair' => [
                 'maxProcesses' => 2,
                 'minProcesses' => 1,
@@ -270,6 +291,10 @@ return [
             ],
             'supervisor-delivery' => [
                 'maxProcesses' => 2,
+                'minProcesses' => 1,
+            ],
+            'supervisor-translation' => [
+                'maxProcesses' => 1,
                 'minProcesses' => 1,
             ],
             'supervisor-repair' => [

@@ -345,6 +345,100 @@
                 }
             }
 
+            /* ── Translation toggle ────────────── */
+            .feed-translate-section {
+                border: 1px solid var(--line);
+                border-radius: 13px;
+                background: rgba(10, 20, 38, 0.8);
+                padding: 14px;
+            }
+
+            .feed-translate-toggle-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .feed-translate-label {
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .feed-translate-switch {
+                position: relative;
+                display: inline-block;
+                width: 42px;
+                height: 24px;
+                flex-shrink: 0;
+            }
+
+            .feed-translate-switch input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+
+            .feed-translate-slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(255,255,255,0.1);
+                border-radius: 999px;
+                transition: .25s;
+            }
+
+            .feed-translate-slider::before {
+                content: "";
+                position: absolute;
+                width: 18px;
+                height: 18px;
+                left: 3px;
+                bottom: 3px;
+                background: var(--text);
+                border-radius: 999px;
+                transition: .25s;
+            }
+
+            .feed-translate-switch input:checked + .feed-translate-slider {
+                background: var(--brand);
+            }
+
+            .feed-translate-switch input:checked + .feed-translate-slider::before {
+                transform: translateX(18px);
+            }
+
+            .feed-translate-options {
+                margin-top: 12px;
+                display: grid;
+                gap: 8px;
+            }
+
+            .feed-translate-select {
+                width: 100%;
+                padding: 9px 12px;
+                border-radius: 10px;
+                border: 1px solid var(--line);
+                background: rgba(9, 18, 34, 0.9);
+                color: var(--text);
+                font-family: inherit;
+                font-size: 14px;
+                cursor: pointer;
+                -webkit-appearance: none;
+                appearance: none;
+            }
+
+            .feed-translate-select:focus {
+                outline: none;
+                border-color: var(--brand);
+            }
+
+            .feed-translate-hint {
+                margin: 0;
+                font-size: 12px;
+                color: var(--muted);
+                line-height: 1.5;
+            }
+
             @media (max-width: 1150px) {
                 .feed-builder-grid {
                     grid-template-columns: 1fr;
@@ -422,6 +516,54 @@
             <input type="hidden" name="polling_interval_minutes" value="30">
             <input type="hidden" name="created_from" value="{{ $feedBuilderCreatedFrom }}">
             <input type="hidden" name="redirect_to" value="{{ $feedBuilderRedirectTo }}">
+            <input id="feed_builder_translate_enabled" type="hidden" name="translate_enabled" value="0">
+            <input id="feed_builder_translate_language" type="hidden" name="translate_language" value="">
+
+            <div id="feed-builder-translate-section" class="feed-translate-section" style="display:none; margin-bottom: 8px;">
+                <div class="feed-translate-toggle-row">
+                    <label class="feed-translate-switch">
+                        <input type="checkbox" id="feed_builder_translate_toggle">
+                        <span class="feed-translate-slider"></span>
+                    </label>
+                    <span class="feed-translate-label">Translate articles</span>
+                </div>
+                <div id="feed-builder-translate-options" class="feed-translate-options" style="display:none;">
+                    <label class="field-label" style="font-size:12px; margin-bottom:4px; display:block;">Target language</label>
+                    <select id="feed_builder_translate_select" class="feed-translate-select">
+                        <option value="">Choose language...</option>
+                        <option value="uk">🇺🇦 Ukrainian</option>
+                        <option value="en">🇬🇧 English</option>
+                        <option value="es">🇪🇸 Spanish</option>
+                        <option value="fr">🇫🇷 French</option>
+                        <option value="de">🇩🇪 German</option>
+                        <option value="it">🇮🇹 Italian</option>
+                        <option value="pt">🇵🇹 Portuguese</option>
+                        <option value="ja">🇯🇵 Japanese</option>
+                        <option value="ko">🇰🇷 Korean</option>
+                        <option value="zh">🇨🇳 Chinese</option>
+                        <option value="ar">🇸🇦 Arabic</option>
+                        <option value="hi">🇮🇳 Hindi</option>
+                        <option value="pl">🇵🇱 Polish</option>
+                        <option value="nl">🇳🇱 Dutch</option>
+                        <option value="tr">🇹🇷 Turkish</option>
+                        <option value="ru">🇷🇺 Russian</option>
+                        <option value="sv">🇸🇪 Swedish</option>
+                        <option value="da">🇩🇰 Danish</option>
+                        <option value="fi">🇫🇮 Finnish</option>
+                        <option value="no">🇳🇴 Norwegian</option>
+                        <option value="cs">🇨🇿 Czech</option>
+                        <option value="ro">🇷🇴 Romanian</option>
+                        <option value="hu">🇭🇺 Hungarian</option>
+                        <option value="el">🇬🇷 Greek</option>
+                        <option value="th">🇹🇭 Thai</option>
+                        <option value="vi">🇻🇳 Vietnamese</option>
+                        <option value="id">🇮🇩 Indonesian</option>
+                        <option value="he">🇮🇱 Hebrew</option>
+                        <option value="bg">🇧🇬 Bulgarian</option>
+                    </select>
+                    <p class="feed-translate-hint">Articles will be translated via AI and delivered as links to rss.cursor.style with full translated content.</p>
+                </div>
+            </div>
 
             <div id="feed-builder-save-empty" class="feed-builder-empty">
                 Generate a preview first. Once it looks right, you can add the feed to a Telegram group or channel from here.
@@ -556,6 +698,12 @@
                 const destinationTabButtons = document.querySelectorAll('[data-destination-tab]');
                 const destinationPanels = document.querySelectorAll('[data-destination-panel]');
                 const destinationChoices = document.querySelectorAll('[data-destination-choice]');
+                const translateSection = document.getElementById('feed-builder-translate-section');
+                const translateToggle = document.getElementById('feed_builder_translate_toggle');
+                const translateOptions = document.getElementById('feed-builder-translate-options');
+                const translateEnabledInput = document.getElementById('feed_builder_translate_enabled');
+                const translateLanguageInput = document.getElementById('feed_builder_translate_language');
+                const translateSelect = document.getElementById('feed_builder_translate_select');
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
                 const pendingStatuses = new Set(['queued', 'discovering', 'fetching', 'parsing']);
                 let pollingTimer = null;
@@ -604,6 +752,12 @@
                     destinationPicker.style.display = 'none';
                     openPickerButton.textContent = 'Add To Telegram';
                     latestPreviewItems = [];
+                    translateSection.style.display = 'none';
+                    translateToggle.checked = false;
+                    translateOptions.style.display = 'none';
+                    translateEnabledInput.value = '0';
+                    translateLanguageInput.value = '';
+                    translateSelect.value = '';
                     destinationChoices.forEach((choice) => {
                         choice.disabled = false;
                         choice.classList.remove('is-loading');
@@ -761,6 +915,7 @@
                     saveSourceInput.value = payload.source?.resolved_url || sourceInput.value.trim();
                     saveEmptyState.style.display = 'none';
                     saveReadyState.style.display = 'block';
+                    translateSection.style.display = 'block';
                     statusNode.textContent = `${latestPreviewItems.length || 0} preview items ready. Choose where this feed should go.`;
 
                     return true;
@@ -876,6 +1031,21 @@
                     const isOpen = destinationPicker.style.display !== 'none';
                     destinationPicker.style.display = isOpen ? 'none' : 'block';
                     openPickerButton.textContent = isOpen ? 'Add To Telegram' : 'Hide Telegram Destinations';
+                });
+
+                translateToggle.addEventListener('change', () => {
+                    const enabled = translateToggle.checked;
+                    translateOptions.style.display = enabled ? 'grid' : 'none';
+                    translateEnabledInput.value = enabled ? '1' : '0';
+
+                    if (!enabled) {
+                        translateSelect.value = '';
+                        translateLanguageInput.value = '';
+                    }
+                });
+
+                translateSelect.addEventListener('change', () => {
+                    translateLanguageInput.value = translateSelect.value;
                 });
 
                 destinationChoices.forEach((button) => {

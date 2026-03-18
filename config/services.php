@@ -39,6 +39,7 @@ return [
         'api_key' => env('OPENAI_API_KEY'),
         'model' => env('OPENAI_MODEL', 'gpt-5-mini'),
         'schema_models' => env('OPENAI_SCHEMA_MODELS', ''),
+        'translation_model' => env('OPENAI_TRANSLATION_MODEL', 'gpt-4o-mini'),
     ],
 
     'google' => [

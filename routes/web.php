@@ -11,9 +11,11 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\TelegramIntegrationController;
+use App\Http\Controllers\TranslatedArticleController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/articles/{slug}', [TranslatedArticleController::class, 'show'])->name('articles.show');
 
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
