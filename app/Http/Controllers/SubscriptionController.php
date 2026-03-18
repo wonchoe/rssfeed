@@ -6,6 +6,7 @@ use App\Events\SourceCreated;
 use App\Jobs\DiscoverSourceTypeJob;
 use App\Jobs\FetchSourceJob;
 use App\Jobs\SendTelegramMessageJob;
+use App\Jobs\TranslateArticleJob;
 use App\Models\Article;
 use App\Models\Delivery;
 use App\Models\Subscription;
@@ -276,6 +277,17 @@ class SubscriptionController extends Controller
                     'sample_delivery' => true,
                 ]),
             ]);
+        }
+
+        if ($subscription->translate_enabled && $subscription->translate_language) {
+            TranslateArticleJob::dispatch(
+                articleId: $article->id,
+                subscriptionId: $subscription->id,
+                language: $subscription->translate_language,
+                deliveryId: $delivery->id,
+            )->onQueue('translation');
+
+            return 'queued';
         }
 
         $dispatch = static fn () => SendTelegramMessageJob::dispatch(
