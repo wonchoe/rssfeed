@@ -38,12 +38,18 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             // Try Jina Reader for better content extraction
             $markdown = $this->fetchViaJinaReader($article->canonical_url);
 
+            $provider = (string) config('services.translation.provider', 'openai');
+
             if ($markdown !== null) {
                 $contentMarkdown = $this->cleanJinaMarkdown($markdown);
-                $translatedContent = $this->translateMarkdownViaOpenAi($article->title, $contentMarkdown, $language, $article->canonical_url);
+                $translatedContent = $provider === 'xiaomi'
+                    ? $this->translateMarkdownViaMimo($article->title, $contentMarkdown, $language, $article->canonical_url)
+                    : $this->translateMarkdownViaOpenAi($article->title, $contentMarkdown, $language, $article->canonical_url);
             } else {
                 $contentHtml = $this->fetchArticleContent($article);
-                $translatedContent = $this->translateViaOpenAi($article->title, $contentHtml, $language, $article->canonical_url);
+                $translatedContent = $provider === 'xiaomi'
+                    ? $this->translateMarkdownViaMimo($article->title, $contentHtml, $language, $article->canonical_url)
+                    : $this->translateViaOpenAi($article->title, $contentHtml, $language, $article->canonical_url);
             }
 
             $slug = $this->generateSlug($article, $language);
@@ -63,9 +69,9 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
         });
     }
 
-    public function translateUrl(string $url, string $language): TranslatedArticle
+    public function translateUrl(string $url, string $language, string $provider = 'openai'): TranslatedArticle
     {
-        $urlHash = hash('sha256', $url.'-'.$language);
+        $urlHash = hash('sha256', $url.'-'.$language.'-'.$provider);
 
         $existing = TranslatedArticle::query()
             ->where('original_url', $url)
@@ -89,7 +95,9 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             $title = $this->extractTitleFromMarkdown($markdown, $url);
             $imageUrl = $this->extractHeroImageFromMarkdown($markdown, $url);
             $contentMarkdown = $this->cleanJinaMarkdown($markdown);
-            $translatedContent = $this->translateMarkdownViaOpenAi($title, $contentMarkdown, $language, $url);
+            $translatedContent = $provider === 'xiaomi'
+                ? $this->translateMarkdownViaMimo($title, $contentMarkdown, $language, $url)
+                : $this->translateMarkdownViaOpenAi($title, $contentMarkdown, $language, $url);
         } else {
             // Fallback to direct HTML extraction
             $fullHtml = $this->fetchContentFromUrl($url);
@@ -580,28 +588,63 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
     /**
      * @return array{title: string, content_html: string}
      */
+    private function translateMarkdownViaMimo(string $title, string $contentMarkdown, string $language, string $originalUrl): array
+    {
+        $apiKey = trim((string) config('services.xiaomi.token', ''));
+
+        if ($apiKey === '') {
+            return ['title' => $title, 'content_html' => Str::markdown($contentMarkdown)];
+        }
+
+        $baseUrl = (string) config('services.xiaomi.base_url', 'https://api.xiaomimimo.com/v1/chat/completions');
+        $model   = (string) config('services.xiaomi.model', 'mimo-v2-pro');
+
+        $languageNames = $this->languageMap();
+        $languageName  = $languageNames[$language] ?? $language;
+        $contentSnippet = Str::limit($contentMarkdown, 60000, '');
+
+        [$systemPrompt, $userPrompt] = $this->buildTranslationPrompts($title, $contentSnippet, $languageName, $originalUrl);
+
+        return $this->callChatApi($baseUrl, $apiKey, $model, $systemPrompt, $userPrompt, $title, $contentSnippet);
+    }
+
+    /**
+     * @return array{title: string, content_html: string}
+     */
     private function translateMarkdownViaOpenAi(string $title, string $contentMarkdown, string $language, string $originalUrl): array
     {
         $apiKey = trim((string) config('services.openai.api_key', ''));
 
         if ($apiKey === '') {
-            return [
-                'title' => $title,
-                'content_html' => Str::markdown($contentMarkdown),
-            ];
+            return ['title' => $title, 'content_html' => Str::markdown($contentMarkdown)];
         }
 
-        $model = trim((string) config('services.openai.translation_model', 'gpt-4o-mini'));
-
-        if ($model === '') {
-            $model = 'gpt-4o-mini';
-        }
+        $model = trim((string) config('services.openai.translation_model', 'gpt-4o-mini')) ?: 'gpt-4o-mini';
 
         $languageNames = $this->languageMap();
-        $languageName = $languageNames[$language] ?? $language;
-
+        $languageName  = $languageNames[$language] ?? $language;
         $contentSnippet = Str::limit($contentMarkdown, 60000, '');
 
+        [$systemPrompt, $userPrompt] = $this->buildTranslationPrompts($title, $contentSnippet, $languageName, $originalUrl);
+
+        return $this->callChatApi(
+            'https://api.openai.com/v1/chat/completions',
+            $apiKey,
+            $model,
+            $systemPrompt,
+            $userPrompt,
+            $title,
+            $contentSnippet
+        );
+    }
+
+    /**
+     * Build the shared system + user prompts for translation.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function buildTranslationPrompts(string $title, string $contentSnippet, string $languageName, string $originalUrl): array
+    {
         $systemPrompt = <<<PROMPT
 You are a professional translator and content editor. Translate the provided article into {$languageName}.
 
@@ -635,52 +678,68 @@ TRANSLATION RULES:
 PROMPT;
 
         $userPrompt = json_encode([
-            'title' => $title,
+            'title'            => $title,
             'content_markdown' => $contentSnippet,
-            'target_language' => $languageName,
-            'original_url' => $originalUrl,
+            'target_language'  => $languageName,
+            'original_url'     => $originalUrl,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
+        return [$systemPrompt, $userPrompt];
+    }
+
+    /**
+     * @return array{title: string, content_html: string}
+     */
+    private function callChatApi(
+        string $baseUrl,
+        string $apiKey,
+        string $model,
+        string $systemPrompt,
+        string $userPrompt,
+        string $fallbackTitle,
+        string $fallbackMarkdown
+    ): array {
         try {
             $response = Http::timeout(300)
+                ->withHeaders(['api-key' => $apiKey])
                 ->withToken($apiKey)
                 ->acceptJson()
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
+                ->post($baseUrl, [
+                    'model'                => $model,
                     'max_completion_tokens' => 16000,
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
+                    'response_format'      => ['type' => 'json_object'],
+                    'messages'             => [
                         ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userPrompt],
+                        ['role' => 'user',   'content' => $userPrompt],
                     ],
                 ]);
         } catch (\Throwable) {
-            return ['title' => $title, 'content_html' => Str::markdown($contentSnippet)];
+            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
         }
 
         if (! $response->successful()) {
-            return ['title' => $title, 'content_html' => Str::markdown($contentSnippet)];
+            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
         }
 
         $content = data_get($response->json(), 'choices.0.message.content');
 
         if (! is_string($content) || trim($content) === '') {
-            return ['title' => $title, 'content_html' => Str::markdown($contentSnippet)];
+            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
         }
 
         $decoded = $this->decodeJson($content);
 
         if (! is_array($decoded)) {
-            return ['title' => $title, 'content_html' => Str::markdown($contentSnippet)];
+            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
         }
 
         return [
-            'title' => is_string($decoded['title'] ?? null) && trim($decoded['title']) !== ''
+            'title'        => is_string($decoded['title'] ?? null) && trim($decoded['title']) !== ''
                 ? trim($decoded['title'])
-                : $title,
+                : $fallbackTitle,
             'content_html' => is_string($decoded['content_html'] ?? null) && trim($decoded['content_html']) !== ''
                 ? trim($decoded['content_html'])
-                : Str::markdown($contentSnippet),
+                : Str::markdown($fallbackMarkdown),
         ];
     }
 

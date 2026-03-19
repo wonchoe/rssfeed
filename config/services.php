@@ -42,6 +42,16 @@ return [
         'translation_model' => env('OPENAI_TRANSLATION_MODEL', 'gpt-4o-mini'),
     ],
 
+    'xiaomi' => [
+        'token' => env('XIAOMI_TOKEN'),
+        'base_url' => 'https://api.xiaomimimo.com/v1/chat/completions',
+        'model' => env('XIAOMI_MODEL', 'mimo-v2-pro'),
+    ],
+
+    'translation' => [
+        'provider' => env('TRANSLATION_PROVIDER', 'openai'), // openai | xiaomi
+    ],
+
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),

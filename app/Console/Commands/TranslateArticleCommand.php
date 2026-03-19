@@ -9,7 +9,8 @@ class TranslateArticleCommand extends Command
 {
     protected $signature = 'article:translate
         {url : The article URL to translate}
-        {--lang=uk : Target language code (uk, en, es, fr, de, etc.)}';
+        {--lang=uk : Target language code (uk, en, es, fr, de, etc.)}
+        {--provider=openai : Translation provider (openai, xiaomi)}';
 
     protected $description = 'Translate an article from a URL and generate a local readable page';
 
@@ -17,14 +18,16 @@ class TranslateArticleCommand extends Command
     {
         $url = $this->argument('url');
         $language = $this->option('lang');
+        $provider = $this->option('provider');
 
         $this->info("Fetching and translating article...");
         $this->line("  URL:      {$url}");
         $this->line("  Language: {$language}");
+        $this->line("  Provider: {$provider}");
         $this->newLine();
 
         try {
-            $translated = $translationService->translateUrl($url, $language);
+            $translated = $translationService->translateUrl($url, $language, $provider);
 
             $this->info('Translation complete!');
             $this->newLine();
