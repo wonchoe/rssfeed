@@ -40,7 +40,7 @@ class FeedGeneratorTest extends TestCase
         $response->assertSee('Create New Feed');
         $response->assertSee('Generate Preview');
         $response->assertSee('Add This Feed');
-        $response->assertSee('Add To Telegram');
+        $response->assertSee('Add This Feed');
     }
 
     public function test_generator_preview_returns_parsed_feed_items(): void

@@ -41,7 +41,7 @@ class SubscriptionController extends Controller
                     }
                 },
             ],
-            'channel' => ['required', 'string', 'in:telegram,slack,discord,email,webhook'],
+            'channel' => ['required', 'string', 'in:telegram,slack,discord,teams,email,webhook'],
             'target' => ['nullable', 'string', 'max:512'],
             'telegram_chat_id' => ['nullable', 'integer'],
             'polling_interval_minutes' => ['required', 'integer', 'min:5', 'max:1440'],

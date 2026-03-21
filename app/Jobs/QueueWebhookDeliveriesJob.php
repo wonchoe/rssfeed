@@ -10,7 +10,7 @@ use App\Support\PipelineStage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
-class QueueTelegramDeliveriesJob implements ShouldQueue
+class QueueWebhookDeliveriesJob implements ShouldQueue
 {
     use Queueable;
 
@@ -23,6 +23,7 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
      */
     public function __construct(
         public readonly string $sourceId,
+        public readonly string $channel,
         public readonly int $articleCount,
         public readonly array $context = [],
     ) {}
@@ -35,9 +36,6 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
         return [15, 60, 180, 300];
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         $articleIds = $this->context['article_ids'] ?? [];
@@ -57,7 +55,7 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
 
         $subscriptions = Subscription::query()
             ->where('source_id', $this->sourceId)
-            ->where('channel', 'telegram')
+            ->where('channel', $this->channel)
             ->where('is_active', true)
             ->get();
 
@@ -71,7 +69,6 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
             ->keyBy('id');
 
         $queuedCount = 0;
-        $translationBatch = []; // keyed by "{articleId}-{language}"
 
         foreach ($subscriptions as $subscription) {
             foreach ($normalizedArticleIds as $articleId) {
@@ -85,25 +82,17 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
                     [
                         'article_id' => $article->id,
                         'subscription_id' => $subscription->id,
-                        'channel' => 'telegram',
+                        'channel' => $this->channel,
                     ],
                     [
                         'status' => 'queued',
                         'attempts' => 0,
                         'queued_at' => now(),
-                        'meta' => [
-                            'pipeline_stage' => PipelineStage::Deliver->value,
-                        ],
+                        'meta' => ['pipeline_stage' => PipelineStage::Deliver->value],
                     ]
                 );
 
                 if (! $delivery->wasRecentlyCreated && $delivery->status === 'delivered') {
-                    continue;
-                }
-
-                // If already queued (in-flight), don't dispatch a second job — the idempotency
-                // guard in SendTelegramMessageJob will handle any race on the DB side.
-                if (! $delivery->wasRecentlyCreated && $delivery->status === 'queued') {
                     continue;
                 }
 
@@ -114,45 +103,31 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
                     ]);
                 }
 
-                if ($subscription->translate_enabled && $subscription->translate_language) {
-                    $batchKey = $article->id.'-'.$subscription->translate_language;
+                $jobClass = match ($this->channel) {
+                    'slack' => SendSlackMessageJob::class,
+                    'discord' => SendDiscordMessageJob::class,
+                    'teams' => SendTeamsMessageJob::class,
+                    default => null,
+                };
 
-                    if (! isset($translationBatch[$batchKey])) {
-                        $translationBatch[$batchKey] = [
-                            'article_id' => $article->id,
-                            'language' => $subscription->translate_language,
-                            'recipients' => [],
-                        ];
-                    }
-
-                    $translationBatch[$batchKey]['recipients'][] = [
-                        'subscription_id' => $subscription->id,
-                        'delivery_id' => $delivery->id,
-                    ];
-                } else {
-                    SendTelegramMessageJob::dispatch(
-                        subscriptionId: (string) $subscription->id,
-                        articleUrl: $article->canonical_url,
-                        message: $article->title,
-                        context: [
-                            'delivery_id' => $delivery->id,
-                            'article_id' => $article->id,
-                            'source_id' => $this->sourceId,
-                            'pipeline_stage' => PipelineStage::Deliver->value,
-                        ],
-                    )->onQueue('delivery');
+                if ($jobClass === null) {
+                    continue;
                 }
+
+                $jobClass::dispatch(
+                    subscriptionId: (string) $subscription->id,
+                    articleUrl: $article->canonical_url,
+                    message: $article->title,
+                    context: [
+                        'delivery_id' => $delivery->id,
+                        'article_id' => $article->id,
+                        'source_id' => $this->sourceId,
+                        'pipeline_stage' => PipelineStage::Deliver->value,
+                    ],
+                )->onQueue('delivery');
 
                 $queuedCount++;
             }
-        }
-
-        foreach ($translationBatch as $batch) {
-            TranslateArticleJob::dispatch(
-                articleId: $batch['article_id'],
-                language: $batch['language'],
-                recipients: $batch['recipients'],
-            )->onQueue('translation');
         }
 
         if ($queuedCount === 0) {
@@ -161,7 +136,7 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
 
         DeliveryRequested::dispatch(
             sourceId: $this->sourceId,
-            channel: 'telegram',
+            channel: $this->channel,
             articleCount: $queuedCount,
             context: array_merge($this->context, [
                 'pipeline_stage' => PipelineStage::Deliver->value,

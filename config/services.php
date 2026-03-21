@@ -52,6 +52,11 @@ return [
         'provider' => env('TRANSLATION_PROVIDER', 'openai'), // openai | xiaomi
     ],
 
+    'email_digest' => [
+        'enabled' => env('EMAIL_DIGEST_ENABLED', false),
+        'send_at' => env('EMAIL_DIGEST_SEND_AT', '08:00'),
+    ],
+
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),

@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\PollSourcesJob;
+use App\Jobs\SendEmailDigestJob;
 use App\Support\FeedGenerationWatchdog;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -36,6 +37,15 @@ if (! app()->isLocal()) {
         ->name('feed-generation-watchdog')
         ->everyMinute()
         ->withoutOverlapping();
+
+    if ((bool) config('services.email_digest.enabled', false)) {
+        $digestTime = (string) config('services.email_digest.send_at', '08:00');
+
+        Schedule::job(new SendEmailDigestJob(), 'delivery')
+            ->dailyAt($digestTime)
+            ->name('email-digest')
+            ->withoutOverlapping();
+    }
 }
 
 Artisan::command('generations:watchdog {--limit=300}', function (FeedGenerationWatchdog $watchdog): void {

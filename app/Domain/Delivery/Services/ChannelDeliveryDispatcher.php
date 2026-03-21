@@ -6,6 +6,9 @@ use App\Data\Article\NormalizedArticleData;
 use App\Data\Delivery\DeliveryMessageData;
 use App\Data\Subscription\SubscriptionTargetData;
 use App\Domain\Delivery\Contracts\DeliveryDispatcher;
+use App\Domain\Delivery\Contracts\DiscordDeliveryService;
+use App\Domain\Delivery\Contracts\SlackDeliveryService;
+use App\Domain\Delivery\Contracts\TeamsDeliveryService;
 use App\Domain\Delivery\Contracts\TelegramDeliveryService;
 use Illuminate\Support\Facades\Log;
 
@@ -13,7 +16,12 @@ class ChannelDeliveryDispatcher implements DeliveryDispatcher
 {
     public function __construct(
         private readonly TelegramDeliveryService $telegramDeliveryService,
+        private readonly SlackDeliveryService $slackDeliveryService,
+        private readonly DiscordDeliveryService $discordDeliveryService,
+        private readonly TeamsDeliveryService $teamsDeliveryService,
     ) {}
+
+    private const SUPPORTED_CHANNELS = ['telegram', 'slack', 'discord', 'teams'];
 
     /**
      * @param  array<int, NormalizedArticleData>  $articles
@@ -21,7 +29,7 @@ class ChannelDeliveryDispatcher implements DeliveryDispatcher
      */
     public function dispatch(string $channel, array $articles, array $subscriptions = []): void
     {
-        if ($channel !== 'telegram') {
+        if (! in_array($channel, self::SUPPORTED_CHANNELS, true)) {
             Log::warning('Unsupported channel requested for delivery dispatch.', [
                 'channel' => $channel,
             ]);
@@ -31,8 +39,8 @@ class ChannelDeliveryDispatcher implements DeliveryDispatcher
 
         foreach ($subscriptions as $subscription) {
             foreach ($articles as $article) {
-                $this->telegramDeliveryService->send(new DeliveryMessageData(
-                    channel: 'telegram',
+                $message = new DeliveryMessageData(
+                    channel: $channel,
                     target: $subscription->target,
                     title: $article->title,
                     body: $article->summary ?? '',
@@ -40,7 +48,14 @@ class ChannelDeliveryDispatcher implements DeliveryDispatcher
                     context: [
                         'subscription_id' => $subscription->subscriptionId,
                     ],
-                ));
+                );
+
+                match ($channel) {
+                    'telegram' => $this->telegramDeliveryService->send($message),
+                    'slack' => $this->slackDeliveryService->send($message),
+                    'discord' => $this->discordDeliveryService->send($message),
+                    'teams' => $this->teamsDeliveryService->send($message),
+                };
             }
         }
     }

@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Events\NewArticlesDetected;
 use App\Jobs\QueueTelegramDeliveriesJob;
+use App\Jobs\QueueWebhookDeliveriesJob;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 
@@ -28,11 +29,24 @@ class QueueDeliveriesForNewArticles implements ShouldQueue
      */
     public function handle(NewArticlesDetected $event): void
     {
+        // Telegram (existing real-time delivery)
         QueueTelegramDeliveriesJob::dispatch(
             sourceId: $event->sourceId,
             articleCount: $event->newArticleCount,
             context: $event->context,
         )->onQueue('delivery');
+
+        // Slack, Discord, Teams (webhook-based real-time delivery)
+        foreach (['slack', 'discord', 'teams'] as $channel) {
+            QueueWebhookDeliveriesJob::dispatch(
+                sourceId: $event->sourceId,
+                channel: $channel,
+                articleCount: $event->newArticleCount,
+                context: $event->context,
+            )->onQueue('delivery');
+        }
+
+        // Email is handled by the daily scheduled digest — not dispatched per-event
     }
 
     /**

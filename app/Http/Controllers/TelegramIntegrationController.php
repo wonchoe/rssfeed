@@ -91,4 +91,16 @@ class TelegramIntegrationController extends Controller
 
         return back()->with('status', $message);
     }
+
+    public function disconnectAccount(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        $link = $user->telegramUserLink;
+
+        if ($link) {
+            $link->delete();
+        }
+
+        return back()->with('status', 'Telegram account disconnected.');
+    }
 }

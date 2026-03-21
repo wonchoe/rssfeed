@@ -51,7 +51,7 @@ XML;
         $dashboardResponse->assertSee('Subscriptions');
         $dashboardResponse->assertSee('Generate Preview');
         $dashboardResponse->assertSee('Enter news site URL');
-        $dashboardResponse->assertSee('Add To Telegram');
+        $dashboardResponse->assertSee('Add This Feed');
         $dashboardResponse->assertDontSeeText('Link your Telegram account once');
 
         $storeResponse = $this->post('/subscriptions', [

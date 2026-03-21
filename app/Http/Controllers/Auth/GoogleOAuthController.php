@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
@@ -33,9 +34,20 @@ class GoogleOAuthController extends Controller
             ]);
         }
 
+        $sessionIdBefore = $request->session()->getId();
+
         try {
             $googleUser = Socialite::driver('google')->user();
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            Log::warning('Google OAuth: callback exception', [
+                'class'   => get_class($e),
+                'message' => $e->getMessage(),
+                'session_id_before' => $sessionIdBefore,
+                'has_state_in_session' => $request->session()->has('state'),
+                'state_in_request'     => $request->get('state') ? 'present' : 'missing',
+                'has_error_in_request' => $request->has('error') ? $request->get('error') : 'none',
+            ]);
+
             return redirect()->route('login')->withErrors([
                 'google' => 'Google sign-in could not be completed. Please try again.',
             ]);

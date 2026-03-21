@@ -33,6 +33,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/integrations', [IntegrationController::class, 'index'])->name('integrations.index');
     Route::get('/integrations/status', [IntegrationController::class, 'status'])->name('integrations.status');
+    Route::post('/integrations/webhooks', [IntegrationController::class, 'storeWebhook'])->name('integrations.webhooks.store');
+    Route::delete('/integrations/webhooks/{webhookIntegration}', [IntegrationController::class, 'destroyWebhook'])->name('integrations.webhooks.destroy');
     Route::get('/feeds/new', [FeedGeneratorController::class, 'index'])->name('feeds.generator');
     Route::post('/feeds/generate', [FeedGeneratorController::class, 'generate'])
         ->middleware('throttle:feed-generate')
@@ -53,6 +55,7 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/subscriptions/{subscription}', [SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
     Route::post('/telegram/connect', [TelegramIntegrationController::class, 'connect'])->name('telegram.connect');
     Route::post('/telegram/verify', [TelegramIntegrationController::class, 'verify'])->name('telegram.verify');
+    Route::delete('/telegram/account', [TelegramIntegrationController::class, 'disconnectAccount'])->name('telegram.disconnect');
     Route::delete('/telegram/chats/{telegramChat}', [TelegramIntegrationController::class, 'destroy'])
         ->name('telegram.chats.destroy');
 

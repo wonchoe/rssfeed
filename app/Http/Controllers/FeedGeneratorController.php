@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\GenerateFeedPreviewJob;
 use App\Models\FeedGeneration;
+use App\Models\WebhookIntegration;
 use App\Support\AdminAccess;
 use App\Support\FeedGenerationWatchdog;
 use App\Support\HorizonRuntime;
@@ -34,6 +35,11 @@ class FeedGeneratorController extends Controller
                 ->where('chat_type', 'channel')
                 ->orderByDesc('linked_at')
                 ->orderBy('title')
+                ->get(),
+            'webhookIntegrations' => WebhookIntegration::query()
+                ->where('user_id', $user->id)
+                ->orderBy('channel')
+                ->orderBy('label')
                 ->get(),
         ]);
     }

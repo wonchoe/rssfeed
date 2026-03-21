@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\WebhookIntegration;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 
@@ -34,6 +35,11 @@ class DashboardController extends Controller
             ],
             'telegramGroupChats' => $telegramGroupChats,
             'telegramChannelChats' => $telegramChannelChats,
+            'webhookIntegrations' => WebhookIntegration::query()
+                ->where('user_id', $user->id)
+                ->orderBy('channel')
+                ->orderBy('label')
+                ->get(),
         ]);
     }
 }

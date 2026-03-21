@@ -9,8 +9,16 @@ use App\Domain\Article\Services\DatabaseDeduplicationService;
 use App\Domain\Article\Services\DefaultArticleNormalizer;
 use App\Domain\Article\Services\OpenAiArticleTranslationService;
 use App\Domain\Delivery\Contracts\DeliveryDispatcher;
+use App\Domain\Delivery\Contracts\DiscordDeliveryService;
+use App\Domain\Delivery\Contracts\EmailDigestDeliveryService;
+use App\Domain\Delivery\Contracts\SlackDeliveryService;
+use App\Domain\Delivery\Contracts\TeamsDeliveryService;
 use App\Domain\Delivery\Contracts\TelegramDeliveryService;
 use App\Domain\Delivery\Services\ChannelDeliveryDispatcher;
+use App\Domain\Delivery\Services\DefaultEmailDigestDeliveryService;
+use App\Domain\Delivery\Services\DiscordWebhookDeliveryService;
+use App\Domain\Delivery\Services\SlackWebhookDeliveryService;
+use App\Domain\Delivery\Services\TeamsWebhookDeliveryService;
 use App\Domain\Delivery\Services\TelegramBotDeliveryService;
 use App\Domain\Parsing\Contracts\AiSchemaResolver;
 use App\Domain\Parsing\Contracts\FeedParserService;
@@ -43,6 +51,10 @@ class DomainServiceProvider extends ServiceProvider
         $this->app->bind(DeduplicationService::class, DatabaseDeduplicationService::class);
         $this->app->bind(SubscriptionRepository::class, EloquentSubscriptionRepository::class);
         $this->app->bind(TelegramDeliveryService::class, TelegramBotDeliveryService::class);
+        $this->app->bind(SlackDeliveryService::class, SlackWebhookDeliveryService::class);
+        $this->app->bind(DiscordDeliveryService::class, DiscordWebhookDeliveryService::class);
+        $this->app->bind(TeamsDeliveryService::class, TeamsWebhookDeliveryService::class);
+        $this->app->bind(EmailDigestDeliveryService::class, DefaultEmailDigestDeliveryService::class);
         $this->app->bind(DeliveryDispatcher::class, ChannelDeliveryDispatcher::class);
     }
 

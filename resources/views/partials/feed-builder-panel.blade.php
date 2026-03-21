@@ -3,6 +3,7 @@
     $feedBuilderCreatedFrom = $feedBuilderCreatedFrom ?? 'dashboard_builder';
     $telegramGroupChats = $telegramGroupChats ?? collect();
     $telegramChannelChats = $telegramChannelChats ?? collect();
+    $webhookIntegrations = $webhookIntegrations ?? collect();
     $defaultDestinationTab = $telegramGroupChats->isNotEmpty() ? 'group' : 'channel';
 @endphp
 
@@ -454,6 +455,52 @@
                     display: none;
                 }
             }
+
+            /* ── Channel selector tabs ─────────── */
+            .feed-channel-tabs {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+
+            .feed-channel-tab {
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                padding: 7px 14px;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: .3px;
+                background: rgba(15, 24, 45, 0.65);
+                color: var(--muted);
+                cursor: pointer;
+                font-family: inherit;
+                transition: all .18s ease;
+            }
+
+            .feed-channel-tab:hover {
+                color: var(--text);
+                border-color: rgba(93, 168, 255, 0.35);
+            }
+
+            .feed-channel-tab.active {
+                color: #0f203d;
+                border-color: transparent;
+                background: linear-gradient(135deg, #66b2ff 0%, #8ac6ff 100%);
+            }
+
+            .feed-channel-panel {
+                display: none;
+            }
+
+            .feed-channel-panel.active {
+                display: block;
+                animation: feedChannelFade .22s ease;
+            }
+
+            @keyframes feedChannelFade {
+                from { opacity: 0; transform: translateY(4px); }
+                to   { opacity: 1; transform: translateY(0); }
+            }
         </style>
     @endpush
 @endonce
@@ -506,13 +553,14 @@
 
     <article class="panel feed-builder-card">
         <h3 class="feed-builder-title">Add This Feed</h3>
-        <p class="hint">If the preview looks good, open the chooser and send this feed to one of your Telegram destinations.</p>
+        <p class="hint">If the preview looks good, choose a delivery channel and destination for this feed.</p>
 
         <form id="feed-builder-save-form" class="feed-destination-box" method="POST" action="{{ route('subscriptions.store') }}">
             @csrf
             <input id="feed_builder_save_source_url" type="hidden" name="source_url" value="">
             <input id="feed_builder_telegram_chat_id" type="hidden" name="telegram_chat_id" value="">
-            <input type="hidden" name="channel" value="telegram">
+            <input id="feed_builder_channel" type="hidden" name="channel" value="telegram">
+            <input id="feed_builder_target" type="hidden" name="target" value="">
             <input type="hidden" name="polling_interval_minutes" value="30">
             <input type="hidden" name="created_from" value="{{ $feedBuilderCreatedFrom }}">
             <input type="hidden" name="redirect_to" value="{{ $feedBuilderRedirectTo }}">
@@ -566,33 +614,43 @@
             </div>
 
             <div id="feed-builder-save-empty" class="feed-builder-empty">
-                Generate a preview first. Once it looks right, you can add the feed to a Telegram group or channel from here.
+                Generate a preview first. Once it looks right, you can add the feed to a delivery destination.
             </div>
 
             <div id="feed-builder-save-ready" style="display:none;">
                 <div class="feed-destination-intro">
-                    Preview is ready. Open the chooser, pick a Telegram group or channel, and we will attach this feed there.
+                    Preview is ready. Choose a channel and pick a destination.
                 </div>
 
-                <button id="feed-builder-open-picker" type="button" class="btn btn-block" style="margin-top:12px;">
-                    Add To Telegram
-                </button>
+                {{-- Channel selector tabs --}}
+                <div class="feed-channel-tabs" style="margin-top:12px;">
+                    <button type="button" class="feed-channel-tab active" data-channel-tab="telegram">Telegram</button>
+                    @if ($webhookIntegrations->where('channel', 'slack')->isNotEmpty())
+                        <button type="button" class="feed-channel-tab" data-channel-tab="slack">Slack</button>
+                    @endif
+                    @if ($webhookIntegrations->where('channel', 'discord')->isNotEmpty())
+                        <button type="button" class="feed-channel-tab" data-channel-tab="discord">Discord</button>
+                    @endif
+                    @if ($webhookIntegrations->where('channel', 'teams')->isNotEmpty())
+                        <button type="button" class="feed-channel-tab" data-channel-tab="teams">Teams</button>
+                    @endif
+                    @if ($webhookIntegrations->where('channel', 'email')->isNotEmpty())
+                        <button type="button" class="feed-channel-tab" data-channel-tab="email">Email</button>
+                    @endif
+                </div>
 
-                <div
-                    id="feed-builder-destination-picker"
-                    style="display:none; margin-top:12px;"
-                    data-default-destination-tab="{{ $defaultDestinationTab }}"
-                >
+                {{-- Telegram panel --}}
+                <div class="feed-channel-panel active" data-channel-panel="telegram" style="margin-top:12px;">
                     <div class="feed-destination-tabs" style="margin-bottom:12px;">
-                        <button type="button" class="feed-destination-tab" data-destination-tab="group">Telegram Groups</button>
-                        <button type="button" class="feed-destination-tab" data-destination-tab="channel">Telegram Channels</button>
+                        <button type="button" class="feed-destination-tab" data-destination-tab="group">Groups</button>
+                        <button type="button" class="feed-destination-tab" data-destination-tab="channel">Channels</button>
                     </div>
 
                     <div class="feed-destination-panel" data-destination-panel="group">
                         @if ($telegramGroupChats->isEmpty())
                             <div class="feed-builder-empty" style="padding:16px 14px;">
                                 No Telegram groups linked yet.
-                                <a href="{{ route('integrations.index') }}" style="color:#9bc8ff;">Open Integrations</a>
+                                <a href="{{ route('integrations.index') }}#telegram" style="color:#9bc8ff;">Open Integrations</a>
                                 to add one first.
                             </div>
                         @else
@@ -604,6 +662,7 @@
                                         data-destination-choice
                                         data-telegram-chat-id="{{ $telegramChat->id }}"
                                         data-destination-name="{{ $telegramChat->displayName() }}"
+                                        data-destination-channel="telegram"
                                     >
                                         <span class="feed-destination-avatar">
                                             @if ($telegramChat->avatarUrl())
@@ -630,7 +689,7 @@
                         @if ($telegramChannelChats->isEmpty())
                             <div class="feed-builder-empty" style="padding:16px 14px;">
                                 No Telegram channels linked yet.
-                                <a href="{{ route('integrations.index') }}" style="color:#9bc8ff;">Open Integrations</a>
+                                <a href="{{ route('integrations.index') }}#telegram" style="color:#9bc8ff;">Open Integrations</a>
                                 to add one first.
                             </div>
                         @else
@@ -642,6 +701,7 @@
                                         data-destination-choice
                                         data-telegram-chat-id="{{ $telegramChat->id }}"
                                         data-destination-name="{{ $telegramChat->displayName() }}"
+                                        data-destination-channel="telegram"
                                     >
                                         <span class="feed-destination-avatar">
                                             @if ($telegramChat->avatarUrl())
@@ -664,6 +724,46 @@
                         @endif
                     </div>
                 </div>
+
+                {{-- Webhook/Email panels --}}
+                @foreach (['slack', 'discord', 'teams', 'email'] as $wch)
+                    @php $chWebhooks = $webhookIntegrations->where('channel', $wch); @endphp
+                    @if ($chWebhooks->isNotEmpty())
+                        <div class="feed-channel-panel" data-channel-panel="{{ $wch }}" style="margin-top:12px; display:none;">
+                            <div class="feed-destination-list">
+                                @foreach ($chWebhooks as $wh)
+                                    <button
+                                        type="button"
+                                        class="feed-destination-choice"
+                                        data-destination-choice
+                                        data-destination-channel="{{ $wch }}"
+                                        data-destination-target="{{ $wh->webhook_url }}"
+                                        data-destination-name="{{ $wh->label ?: ($wch === 'email' ? $wh->webhook_url : ucfirst($wch).' Webhook') }}"
+                                    >
+                                        <span class="feed-destination-avatar" style="border-radius:12px; font-size:14px; background:rgba(93,168,255,0.15); color:#7bbfff;">
+                                            {{ $wch === 'email' ? '@' : strtoupper(substr($wch, 0, 1)) }}
+                                        </span>
+                                        <span class="feed-destination-copy">
+                                            <strong>{{ $wh->label ?: ($wch === 'email' ? $wh->webhook_url : ucfirst($wch).' Webhook') }}</strong>
+                                            @if ($wch !== 'email')
+                                                <span style="font-size:11px;">{{ Str::limit($wh->webhook_url, 50) }}</span>
+                                            @endif
+                                        </span>
+                                        <span class="feed-destination-arrow">
+                                            <span class="feed-destination-spinner" aria-hidden="true"></span>
+                                            <span>Use</span>
+                                        </span>
+                                    </button>
+                                @endforeach
+                            </div>
+                            @if ($wch !== 'email')
+                                <p style="margin:10px 0 0; font-size:12px; color:var(--muted);">
+                                    Manage webhooks in <a href="{{ route('integrations.index') }}#{{ $wch }}" style="color:#9bc8ff;">Integrations</a>.
+                                </p>
+                            @endif
+                        </div>
+                    @endif
+                @endforeach
             </div>
         </form>
     </article>
@@ -684,6 +784,8 @@
                 const sourceInput = document.getElementById('feed_builder_source_url');
                 const saveSourceInput = document.getElementById('feed_builder_save_source_url');
                 const saveTelegramChatInput = document.getElementById('feed_builder_telegram_chat_id');
+                const saveChannelInput = document.getElementById('feed_builder_channel');
+                const saveTargetInput = document.getElementById('feed_builder_target');
                 const statusNode = document.getElementById('feed-builder-status');
                 const loader = document.getElementById('feed-builder-loader');
                 const previewEmpty = document.getElementById('feed-builder-preview-empty');
@@ -691,13 +793,13 @@
                 const previewList = document.getElementById('feed-builder-preview-list');
                 const metaStrip = document.getElementById('feed-builder-meta');
                 const previewModeButtons = document.querySelectorAll('[data-feed-preview-mode]');
-                const openPickerButton = document.getElementById('feed-builder-open-picker');
-                const destinationPicker = document.getElementById('feed-builder-destination-picker');
                 const saveEmptyState = document.getElementById('feed-builder-save-empty');
                 const saveReadyState = document.getElementById('feed-builder-save-ready');
                 const destinationTabButtons = document.querySelectorAll('[data-destination-tab]');
                 const destinationPanels = document.querySelectorAll('[data-destination-panel]');
                 const destinationChoices = document.querySelectorAll('[data-destination-choice]');
+                const channelTabButtons = document.querySelectorAll('[data-channel-tab]');
+                const channelPanels = document.querySelectorAll('[data-channel-panel]');
                 const translateSection = document.getElementById('feed-builder-translate-section');
                 const translateToggle = document.getElementById('feed_builder_translate_toggle');
                 const translateOptions = document.getElementById('feed-builder-translate-options');
@@ -747,10 +849,10 @@
                     previewEmpty.style.display = 'block';
                     saveSourceInput.value = '';
                     saveTelegramChatInput.value = '';
+                    saveChannelInput.value = 'telegram';
+                    saveTargetInput.value = '';
                     saveEmptyState.style.display = 'block';
                     saveReadyState.style.display = 'none';
-                    destinationPicker.style.display = 'none';
-                    openPickerButton.textContent = 'Add To Telegram';
                     latestPreviewItems = [];
                     translateSection.style.display = 'none';
                     translateToggle.checked = false;
@@ -762,6 +864,9 @@
                         choice.disabled = false;
                         choice.classList.remove('is-loading');
                     });
+                    // Reset channel tabs to Telegram
+                    channelTabButtons.forEach(t => t.classList.toggle('active', t.dataset.channelTab === 'telegram'));
+                    channelPanels.forEach(p => p.classList.toggle('active', p.dataset.channelPanel === 'telegram'));
                 };
 
                 const sanitizeSummaryText = (value) => {
@@ -1027,10 +1132,17 @@
                     });
                 });
 
-                openPickerButton.addEventListener('click', () => {
-                    const isOpen = destinationPicker.style.display !== 'none';
-                    destinationPicker.style.display = isOpen ? 'none' : 'block';
-                    openPickerButton.textContent = isOpen ? 'Add To Telegram' : 'Hide Telegram Destinations';
+                // Channel tab switching
+                channelTabButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        const ch = button.dataset.channelTab;
+                        channelTabButtons.forEach(t => t.classList.toggle('active', t.dataset.channelTab === ch));
+                        channelPanels.forEach(p => {
+                            p.classList.toggle('active', p.dataset.channelPanel === ch);
+                            if (p.dataset.channelPanel !== ch) p.style.display = 'none';
+                            else p.style.display = '';
+                        });
+                    });
                 });
 
                 translateToggle.addEventListener('change', () => {
@@ -1051,20 +1163,29 @@
                 destinationChoices.forEach((button) => {
                     button.addEventListener('click', () => {
                         const sourceUrl = saveSourceInput.value.trim();
-                        const chatId = button.getAttribute('data-telegram-chat-id');
-                        const destinationName = button.getAttribute('data-destination-name') || 'your Telegram destination';
+                        const channel = button.getAttribute('data-destination-channel') || 'telegram';
+                        const chatId = button.getAttribute('data-telegram-chat-id') || '';
+                        const target = button.getAttribute('data-destination-target') || '';
+                        const destinationName = button.getAttribute('data-destination-name') || 'your destination';
 
                         if (!sourceUrl) {
-                            statusNode.textContent = 'Generate preview before choosing a Telegram destination.';
+                            statusNode.textContent = 'Generate preview before choosing a destination.';
                             return;
                         }
 
-                        if (!chatId) {
+                        if (channel === 'telegram' && !chatId) {
                             statusNode.textContent = 'Telegram destination is missing.';
                             return;
                         }
 
+                        if (channel !== 'telegram' && !target) {
+                            statusNode.textContent = 'Webhook target is missing.';
+                            return;
+                        }
+
+                        saveChannelInput.value = channel;
                         saveTelegramChatInput.value = chatId;
+                        saveTargetInput.value = target;
                         statusNode.textContent = `Adding this feed to ${destinationName}...`;
 
                         destinationChoices.forEach((choice) => {
@@ -1078,7 +1199,7 @@
                 });
 
                 setPreviewMode(previewMode);
-                setDestinationTab(destinationPicker.dataset.defaultDestinationTab || 'group');
+                setDestinationTab('{{ $defaultDestinationTab }}');
 
                 previewForm.addEventListener('submit', async (event) => {
                     event.preventDefault();

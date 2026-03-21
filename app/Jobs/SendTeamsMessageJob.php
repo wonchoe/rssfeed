@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Data\Delivery\DeliveryMessageData;
-use App\Domain\Delivery\Contracts\TelegramDeliveryService;
+use App\Domain\Delivery\Contracts\TeamsDeliveryService;
 use App\Events\DeliveryFailed;
 use App\Events\DeliverySucceeded;
 use App\Models\Delivery;
@@ -12,7 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
 
-class SendTelegramMessageJob implements ShouldQueue
+class SendTeamsMessageJob implements ShouldQueue
 {
     use Queueable;
 
@@ -38,10 +38,7 @@ class SendTelegramMessageJob implements ShouldQueue
         return [5, 20, 60, 180, 300];
     }
 
-    /**
-     * Execute the job.
-     */
-    public function handle(TelegramDeliveryService $telegramDeliveryService): void
+    public function handle(TeamsDeliveryService $teamsDeliveryService): void
     {
         $subscription = Subscription::query()->find($this->subscriptionId);
 
@@ -57,14 +54,9 @@ class SendTelegramMessageJob implements ShouldQueue
             ? Delivery::query()->find($deliveryId)
             : null;
 
-        // Idempotency guard: if already delivered (e.g. job retried after a DB hiccup post-send), skip.
-        if ($delivery !== null && $delivery->status === 'delivered') {
-            return;
-        }
-
         try {
-            $telegramDeliveryService->send(new DeliveryMessageData(
-                channel: 'telegram',
+            $teamsDeliveryService->send(new DeliveryMessageData(
+                channel: 'teams',
                 target: $subscription->target,
                 title: $this->message,
                 body: '',
@@ -82,13 +74,11 @@ class SendTelegramMessageJob implements ShouldQueue
                 ]);
             }
 
-            $subscription->update([
-                'last_delivered_at' => now(),
-            ]);
+            $subscription->update(['last_delivered_at' => now()]);
 
             DeliverySucceeded::dispatch(
                 sourceId: (string) ($this->context['source_id'] ?? $subscription->source_id),
-                channel: 'telegram',
+                channel: 'teams',
                 articleCount: 1,
                 context: $this->context,
             );
@@ -104,7 +94,7 @@ class SendTelegramMessageJob implements ShouldQueue
 
             DeliveryFailed::dispatch(
                 sourceId: (string) ($this->context['source_id'] ?? $subscription->source_id),
-                channel: 'telegram',
+                channel: 'teams',
                 reason: $exception->getMessage(),
                 context: $this->context,
             );

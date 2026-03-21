@@ -12,6 +12,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.18",
         "laravel/tinker": "^2.10.1",
+        "patrickschur/language-detection": "^5.3",
         "predis/predis": "^3.4"
     },
     "require-dev": {

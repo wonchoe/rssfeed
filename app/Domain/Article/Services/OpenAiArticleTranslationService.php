@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\TranslatedArticle;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class OpenAiArticleTranslationService implements ArticleTranslationService
@@ -42,14 +43,14 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
 
             if ($markdown !== null) {
                 $contentMarkdown = $this->cleanJinaMarkdown($markdown);
-                $translatedContent = $provider === 'xiaomi'
-                    ? $this->translateMarkdownViaMimo($article->title, $contentMarkdown, $language, $article->canonical_url)
-                    : $this->translateMarkdownViaOpenAi($article->title, $contentMarkdown, $language, $article->canonical_url);
+                $translatedContent = $this->translateWithFallback(
+                    $provider, 'markdown', $article->title, $contentMarkdown, $language, $article->canonical_url
+                );
             } else {
                 $contentHtml = $this->fetchArticleContent($article);
-                $translatedContent = $provider === 'xiaomi'
-                    ? $this->translateMarkdownViaMimo($article->title, $contentHtml, $language, $article->canonical_url)
-                    : $this->translateViaOpenAi($article->title, $contentHtml, $language, $article->canonical_url);
+                $translatedContent = $this->translateWithFallback(
+                    $provider, 'html', $article->title, $contentHtml, $language, $article->canonical_url
+                );
             }
 
             $slug = $this->generateSlug($article, $language);
@@ -95,9 +96,9 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             $title = $this->extractTitleFromMarkdown($markdown, $url);
             $imageUrl = $this->extractHeroImageFromMarkdown($markdown, $url);
             $contentMarkdown = $this->cleanJinaMarkdown($markdown);
-            $translatedContent = $provider === 'xiaomi'
-                ? $this->translateMarkdownViaMimo($title, $contentMarkdown, $language, $url)
-                : $this->translateMarkdownViaOpenAi($title, $contentMarkdown, $language, $url);
+            $translatedContent = $this->translateWithFallback(
+                $provider, 'markdown', $title, $contentMarkdown, $language, $url
+            );
         } else {
             // Fallback to direct HTML extraction
             $fullHtml = $this->fetchContentFromUrl($url);
@@ -105,7 +106,9 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             $imageUrl = $this->extractHeroImage($fullHtml, $url);
             $contentHtml = $this->extractArticleBody($fullHtml);
             $contentHtml = $this->fixRelativeUrls($contentHtml, $url);
-            $translatedContent = $this->translateViaOpenAi($title, $contentHtml, $language, $url);
+            $translatedContent = $this->translateWithFallback(
+                $provider, 'html', $title, $contentHtml, $language, $url
+            );
         }
 
         $slug = Str::slug(Str::limit($translatedContent['title'], 80, '')).'-'.$language.'-'.substr(md5($urlHash.microtime(true)), 0, 8);
@@ -586,14 +589,246 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
     }
 
     /**
+     * Try the primary provider, fall back to OpenAI if it fails, then return untranslated as last resort.
+     *
      * @return array{title: string, content_html: string}
      */
-    private function translateMarkdownViaMimo(string $title, string $contentMarkdown, string $language, string $originalUrl): array
+    private function translateWithFallback(
+        string $provider,
+        string $contentType,
+        string $title,
+        string $content,
+        string $language,
+        string $originalUrl,
+    ): array {
+        // Build the ordered list of strategies to attempt (max 3 total).
+        // Each entry is a closure that calls the appropriate translator.
+        $strategies = [];
+
+        if ($contentType === 'html' && $provider !== 'xiaomi') {
+            $strategies[] = ['label' => $provider,  'fn' => fn () => $this->translateViaOpenAi($title, $content, $language, $originalUrl)];
+        } elseif ($provider === 'xiaomi') {
+            $strategies[] = ['label' => 'xiaomi',   'fn' => fn () => $this->translateMarkdownViaMimo($title, $content, $language, $originalUrl)];
+            $strategies[] = ['label' => 'openai',   'fn' => fn () => $this->translateMarkdownViaOpenAi($title, $content, $language, $originalUrl)];
+        } else {
+            $strategies[] = ['label' => 'openai',   'fn' => fn () => $this->translateMarkdownViaOpenAi($title, $content, $language, $originalUrl)];
+        }
+
+        $bestResult  = null;
+        $attemptsDone = 0;
+
+        foreach ($strategies as $strategy) {
+            if ($attemptsDone >= 3) {
+                break;
+            }
+
+            $attemptsDone++;
+            $result = ($strategy['fn'])();
+
+            if ($result === null) {
+                Log::warning('Translation: provider returned null', [
+                    'provider' => $strategy['label'],
+                    'url'      => $originalUrl,
+                    'language' => $language,
+                    'attempt'  => $attemptsDone,
+                ]);
+
+                continue;
+            }
+
+            $bestResult = $result;
+
+            $verified = $this->verifyTranslationLanguage($result['content_html'], $language);
+
+            if ($verified === true) {
+                return $result;
+            }
+
+            if ($verified === false) {
+                Log::warning('Translation: language verification failed, trying next strategy', [
+                    'provider' => $strategy['label'],
+                    'url'      => $originalUrl,
+                    'language' => $language,
+                    'attempt'  => $attemptsDone,
+                ]);
+
+                continue;
+            }
+
+            // $verified === null means the detector was inconclusive — ask AI
+            $plainText = mb_substr(strip_tags($result['content_html']), 0, 400);
+            $languageNames = $this->languageMap();
+            $languageName  = $languageNames[$language] ?? $language;
+            $aiVerified = $this->verifyLanguageWithAi($plainText, $language, $languageName);
+
+            if ($aiVerified) {
+                return $result;
+            }
+
+            Log::warning('Translation: AI language verification failed, trying next strategy', [
+                'provider' => $strategy['label'],
+                'url'      => $originalUrl,
+                'language' => $language,
+                'attempt'  => $attemptsDone,
+            ]);
+        }
+
+        // All strategies exhausted or failed verification — use best result we have
+        if ($bestResult !== null) {
+            Log::warning('Translation: all verification attempts failed, using best available result', [
+                'url'      => $originalUrl,
+                'language' => $language,
+                'attempts' => $attemptsDone,
+            ]);
+
+            return $bestResult;
+        }
+
+        // Nothing worked at all — return untranslated original
+        Log::error('Translation: all providers failed, returning untranslated content', [
+            'url'      => $originalUrl,
+            'language' => $language,
+        ]);
+
+        return [
+            'title'        => $title,
+            'content_html' => $contentType === 'html' ? $content : Str::markdown($content),
+        ];
+    }
+
+    /**
+     * Detect whether translated content is actually in the expected language.
+     *
+     * Uses patrickschur/language-detection (trigram-based, no API cost).
+     *
+     * Returns:
+     *   true  — library is confident it IS the right language
+     *   false — library is confident it is NOT the right language
+     *   null  — library is inconclusive (text too short, ambiguous, or unsupported script)
+     */
+    private function verifyTranslationLanguage(string $html, string $targetLang): ?bool
+    {
+        $text = trim(strip_tags($html));
+
+        // Too short to judge reliably
+        if (mb_strlen($text) < 60) {
+            return null;
+        }
+
+        // Use up to 600 chars for detection — enough for trigrams, not expensive
+        $sample = mb_substr($text, 0, 600);
+
+        try {
+            $ld = new \LanguageDetection\Language;
+            // top-3 results
+            $results = $ld->detect($sample)->limit(0, 3)->close();
+        } catch (\Throwable $e) {
+            Log::debug('Translation: language detection library threw exception', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (empty($results)) {
+            return null;
+        }
+
+        // Normalize library code to our code (zh-Hans / zh-Hant → zh)
+        $normalizeCode = static function (string $code): string {
+            if (str_starts_with($code, 'zh')) {
+                return 'zh';
+            }
+            // Some libraries return pt-br, pt-pt etc.
+            return strtolower(explode('-', $code)[0]);
+        };
+
+        $topCode  = $normalizeCode(array_key_first($results));
+        $topScore = reset($results);
+
+        // Inconclusive if top score is too low
+        if ($topScore < 0.04) {
+            return null;
+        }
+
+        if ($topCode === $normalizeCode($targetLang)) {
+            return true;
+        }
+
+        // If second/third result matches and top score isn't by a wide margin, stay inconclusive
+        $secondScore = array_values($results)[1] ?? 0.0;
+
+        if (($topScore - $secondScore) < 0.03) {
+            return null;
+        }
+
+        return false;
+    }
+
+    /**
+     * Ask the AI to confirm whether a short text snippet is in the expected language.
+     * Returns true on confirmed match, false otherwise (including on API failure).
+     *
+     * Uses gpt-4o-mini with json_object mode — very cheap (~$0.0001 per call).
+     */
+    private function verifyLanguageWithAi(string $plainTextSnippet, string $targetLang, string $targetLangName): bool
+    {
+        $apiKey = trim((string) config('services.openai.api_key', ''));
+
+        if ($apiKey === '') {
+            return true; // Can't verify — assume OK to avoid blocking delivery
+        }
+
+        try {
+            $response = Http::timeout(15)
+                ->withToken($apiKey)
+                ->acceptJson()
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model'           => 'gpt-4o-mini',
+                    'max_tokens'      => 10,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages'        => [
+                        [
+                            'role'    => 'system',
+                            'content' => 'You are a language detection assistant. Respond only with valid JSON.',
+                        ],
+                        [
+                            'role'    => 'user',
+                            'content' => "Is the following text written in {$targetLangName} (language code: {$targetLang})?\n\nText:\n\"{$plainTextSnippet}\"\n\nReturn exactly: {\"ok\": true} if yes, or {\"ok\": false} if no.",
+                        ],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                return true; // Assume OK on API error
+            }
+
+            $raw   = data_get($response->json(), 'choices.0.message.content', '');
+            $parsed = json_decode((string) $raw, true);
+
+            return (bool) ($parsed['ok'] ?? true);
+        } catch (\Throwable $e) {
+            Log::debug('Translation: AI language verification request failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return true; // Assume OK on exception — avoid blocking delivery
+        }
+    }
+
+    /**
+     * @return array{title: string, content_html: string}|null
+
+     */
+
+    private function translateMarkdownViaMimo(string $title, string $contentMarkdown, string $language, string $originalUrl): ?array
     {
         $apiKey = trim((string) config('services.xiaomi.token', ''));
 
         if ($apiKey === '') {
-            return ['title' => $title, 'content_html' => Str::markdown($contentMarkdown)];
+            Log::warning('Translation: Xiaomi API key not configured');
+
+            return null;
         }
 
         $baseUrl = (string) config('services.xiaomi.base_url', 'https://api.xiaomimimo.com/v1/chat/completions');
@@ -605,18 +840,20 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
 
         [$systemPrompt, $userPrompt] = $this->buildTranslationPrompts($title, $contentSnippet, $languageName, $originalUrl);
 
-        return $this->callChatApi($baseUrl, $apiKey, $model, $systemPrompt, $userPrompt, $title, $contentSnippet);
+        return $this->callChatApi($baseUrl, $apiKey, $model, $systemPrompt, $userPrompt);
     }
 
     /**
-     * @return array{title: string, content_html: string}
+     * @return array{title: string, content_html: string}|null
      */
-    private function translateMarkdownViaOpenAi(string $title, string $contentMarkdown, string $language, string $originalUrl): array
+    private function translateMarkdownViaOpenAi(string $title, string $contentMarkdown, string $language, string $originalUrl): ?array
     {
         $apiKey = trim((string) config('services.openai.api_key', ''));
 
         if ($apiKey === '') {
-            return ['title' => $title, 'content_html' => Str::markdown($contentMarkdown)];
+            Log::warning('Translation: OpenAI API key not configured');
+
+            return null;
         }
 
         $model = trim((string) config('services.openai.translation_model', 'gpt-4o-mini')) ?: 'gpt-4o-mini';
@@ -633,8 +870,6 @@ class OpenAiArticleTranslationService implements ArticleTranslationService
             $model,
             $systemPrompt,
             $userPrompt,
-            $title,
-            $contentSnippet
         );
     }
 
@@ -688,7 +923,7 @@ PROMPT;
     }
 
     /**
-     * @return array{title: string, content_html: string}
+     * @return array{title: string, content_html: string}|null
      */
     private function callChatApi(
         string $baseUrl,
@@ -696,9 +931,7 @@ PROMPT;
         string $model,
         string $systemPrompt,
         string $userPrompt,
-        string $fallbackTitle,
-        string $fallbackMarkdown
-    ): array {
+    ): ?array {
         try {
             $response = Http::timeout(300)
                 ->withHeaders(['api-key' => $apiKey])
@@ -713,48 +946,78 @@ PROMPT;
                         ['role' => 'user',   'content' => $userPrompt],
                     ],
                 ]);
-        } catch (\Throwable) {
-            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
+        } catch (\Throwable $e) {
+            Log::warning('Translation: API call failed with exception', [
+                'url' => $baseUrl,
+                'model' => $model,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
         }
 
         if (! $response->successful()) {
-            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
+            Log::warning('Translation: API returned non-successful status', [
+                'url' => $baseUrl,
+                'model' => $model,
+                'status' => $response->status(),
+                'body' => Str::limit($response->body(), 500),
+            ]);
+
+            return null;
         }
 
         $content = data_get($response->json(), 'choices.0.message.content');
 
         if (! is_string($content) || trim($content) === '') {
-            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
+            Log::warning('Translation: API returned empty content', [
+                'url' => $baseUrl,
+                'model' => $model,
+            ]);
+
+            return null;
         }
 
         $decoded = $this->decodeJson($content);
 
         if (! is_array($decoded)) {
-            return ['title' => $fallbackTitle, 'content_html' => Str::markdown($fallbackMarkdown)];
+            Log::warning('Translation: API returned invalid JSON', [
+                'url' => $baseUrl,
+                'model' => $model,
+                'raw' => Str::limit($content, 500),
+            ]);
+
+            return null;
+        }
+
+        $title = is_string($decoded['title'] ?? null) && trim($decoded['title']) !== ''
+            ? trim($decoded['title'])
+            : null;
+        $html = is_string($decoded['content_html'] ?? null) && trim($decoded['content_html']) !== ''
+            ? trim($decoded['content_html'])
+            : null;
+
+        if ($title === null && $html === null) {
+            return null;
         }
 
         return [
-            'title'        => is_string($decoded['title'] ?? null) && trim($decoded['title']) !== ''
-                ? trim($decoded['title'])
-                : $fallbackTitle,
-            'content_html' => is_string($decoded['content_html'] ?? null) && trim($decoded['content_html']) !== ''
-                ? trim($decoded['content_html'])
-                : Str::markdown($fallbackMarkdown),
+            'title'        => $title ?? '',
+            'content_html' => $html ?? '',
         ];
     }
 
     /**
-     * @return array{title: string, content_html: string}
+     * @return array{title: string, content_html: string}|null
      */
-    private function translateViaOpenAi(string $title, string $contentHtml, string $language, string $originalUrl): array
+    private function translateViaOpenAi(string $title, string $contentHtml, string $language, string $originalUrl): ?array
     {
         $apiKey = trim((string) config('services.openai.api_key', ''));
 
         if ($apiKey === '') {
-            return [
-                'title' => $title,
-                'content_html' => $contentHtml,
-            ];
+            Log::warning('Translation: OpenAI API key not configured (HTML path)');
+
+            return null;
         }
 
         $model = trim((string) config('services.openai.translation_model', 'gpt-4o-mini'));
@@ -794,47 +1057,13 @@ PROMPT;
             'original_url' => $originalUrl,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
-        try {
-            $response = Http::timeout(300)
-                ->withToken($apiKey)
-                ->acceptJson()
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'max_completion_tokens' => 16000,
-                    'response_format' => ['type' => 'json_object'],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userPrompt],
-                    ],
-                ]);
-        } catch (\Throwable) {
-            return ['title' => $title, 'content_html' => $contentHtml];
-        }
-
-        if (! $response->successful()) {
-            return ['title' => $title, 'content_html' => $contentHtml];
-        }
-
-        $content = data_get($response->json(), 'choices.0.message.content');
-
-        if (! is_string($content) || trim($content) === '') {
-            return ['title' => $title, 'content_html' => $contentHtml];
-        }
-
-        $decoded = $this->decodeJson($content);
-
-        if (! is_array($decoded)) {
-            return ['title' => $title, 'content_html' => $contentHtml];
-        }
-
-        return [
-            'title' => is_string($decoded['title'] ?? null) && trim($decoded['title']) !== ''
-                ? trim($decoded['title'])
-                : $title,
-            'content_html' => is_string($decoded['content_html'] ?? null) && trim($decoded['content_html']) !== ''
-                ? trim($decoded['content_html'])
-                : $contentHtml,
-        ];
+        return $this->callChatApi(
+            'https://api.openai.com/v1/chat/completions',
+            $apiKey,
+            $model,
+            $systemPrompt,
+            $userPrompt,
+        );
     }
 
     /**
