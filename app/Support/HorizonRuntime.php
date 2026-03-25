@@ -2,7 +2,7 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\Redis;
+use Laravel\Horizon\Contracts\SupervisorRepository;
 use Throwable;
 
 class HorizonRuntime
@@ -10,10 +10,7 @@ class HorizonRuntime
     public function supervisorsCount(): ?int
     {
         try {
-            $prefix = (string) config('horizon.prefix', 'horizon:');
-            $supervisors = Redis::smembers($prefix.'supervisors');
-
-            return is_array($supervisors) ? count($supervisors) : 0;
+            return count(app(SupervisorRepository::class)->all());
         } catch (Throwable) {
             return null;
         }
