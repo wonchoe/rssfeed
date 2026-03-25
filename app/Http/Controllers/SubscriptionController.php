@@ -11,6 +11,7 @@ use App\Models\Article;
 use App\Models\Delivery;
 use App\Models\Subscription;
 use App\Models\TelegramChat;
+use App\Models\WebhookIntegration;
 use App\Support\HorizonRuntime;
 use App\Support\PipelineStage;
 use App\Support\SourceCatalog;
@@ -44,6 +45,7 @@ class SubscriptionController extends Controller
             'channel' => ['required', 'string', 'in:telegram,slack,discord,teams,email,webhook'],
             'target' => ['nullable', 'string', 'max:512'],
             'telegram_chat_id' => ['nullable', 'integer'],
+            'webhook_integration_id' => ['nullable', 'integer'],
             'polling_interval_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
             'translate_enabled' => ['nullable', 'boolean'],
             'translate_language' => ['nullable', 'string', 'max:10', 'in:uk,en,es,fr,de,it,pt,ja,ko,zh,ar,hi,pl,nl,tr,ru,sv,da,fi,no,cs,ro,hu,el,th,vi,id,ms,he,bg'],
@@ -67,6 +69,7 @@ class SubscriptionController extends Controller
         }
 
         $selectedTelegramChat = null;
+    $selectedWebhookIntegration = null;
 
         if (
             $validated['channel'] === 'telegram' &&
@@ -98,7 +101,22 @@ class SubscriptionController extends Controller
             }
         }
 
+        if (in_array($validated['channel'], ['slack', 'discord', 'teams'], true)) {
+            $selectedWebhookIntegration = WebhookIntegration::query()
+                ->whereKey((int) ($validated['webhook_integration_id'] ?? 0))
+                ->where('user_id', $request->user()->id)
+                ->where('channel', $validated['channel'])
+                ->first();
+
+            if ($selectedWebhookIntegration === null) {
+                throw ValidationException::withMessages([
+                    'target' => 'Please choose a saved webhook destination.',
+                ]);
+            }
+        }
+
         $normalizedTarget = $selectedTelegramChat?->telegram_chat_id
+            ?? $selectedWebhookIntegration?->webhook_url
             ?? trim((string) ($validated['target'] ?? ''));
 
         if ($normalizedTarget === '') {
@@ -125,6 +143,8 @@ class SubscriptionController extends Controller
                 'config' => array_filter([
                     'created_from' => $validated['created_from'] ?? 'dashboard',
                     'telegram_chat_title' => $selectedTelegramChat?->displayName(),
+                    'webhook_integration_id' => $selectedWebhookIntegration?->id,
+                    'webhook_label' => $selectedWebhookIntegration?->label,
                 ], static fn (mixed $value): bool => $value !== null && $value !== ''),
             ]
         );

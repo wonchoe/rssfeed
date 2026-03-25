@@ -24,7 +24,7 @@ class IntegrationsPageTest extends TestCase
         $response->assertOk();
         $response->assertSee('Integrations');
         $response->assertSee('Telegram');
-        $response->assertSee('Not Connected');
+        $response->assertSee('Not connected');
     }
 
     public function test_integrations_page_lists_linked_telegram_groups(): void
@@ -67,8 +67,8 @@ class IntegrationsPageTest extends TestCase
         $response->assertSee('Connected');
         $response->assertSee('Product Updates');
         $response->assertSee('Launch Broadcasts');
-        $response->assertSee('Linked Groups');
-        $response->assertSee('Linked Channels');
+        $response->assertSee('Groups (1)');
+        $response->assertSee('Channels (1)');
         $response->assertSee('Remove');
     }
 

@@ -34,6 +34,7 @@ class Subscription extends Model
     protected function casts(): array
     {
         return [
+            'target' => 'encrypted',
             'is_active' => 'boolean',
             'translate_enabled' => 'boolean',
             'config' => 'array',

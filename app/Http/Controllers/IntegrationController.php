@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domain\Delivery\Services\TelegramLinkingService;
 use App\Models\User;
 use App\Models\WebhookIntegration;
+use App\Support\WebhookUrlValidator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -86,21 +87,7 @@ class IntegrationController extends Controller
 
     private function validateWebhookUrl(string $channel, string $url): void
     {
-        $error = match ($channel) {
-            'slack' => ! str_starts_with($url, 'https://hooks.slack.com/')
-                ? 'Slack webhook URLs must start with https://hooks.slack.com/'
-                : null,
-            'discord' => ! str_starts_with($url, 'https://discord.com/api/webhooks/')
-                ? 'Discord webhook URLs must start with https://discord.com/api/webhooks/'
-                : null,
-            'teams' => ! (str_contains($url, '.logic.azure.com') || str_contains($url, '.office.com'))
-                ? 'Teams webhook URLs must be Power Automate / Office workflow URLs.'
-                : null,
-            'email' => ! filter_var($url, FILTER_VALIDATE_EMAIL)
-                ? 'Please enter a valid email address.'
-                : null,
-            default => 'Unsupported channel.',
-        };
+        $error = WebhookUrlValidator::errorFor($channel, $url);
 
         if ($error !== null) {
             throw ValidationException::withMessages([
@@ -132,7 +119,7 @@ class IntegrationController extends Controller
 
         $mapWebhooks = static fn (string $ch) => ($webhooksByChannel->get($ch) ?? collect())->map(fn ($w) => [
             'id' => $w->id,
-            'target' => $w->webhook_url,
+            'target' => $ch === 'email' ? $w->webhook_url : null,
             'label' => $w->label,
             'feed_count' => $w->subscriptionCount(),
         ]);

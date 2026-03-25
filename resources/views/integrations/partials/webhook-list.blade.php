@@ -10,7 +10,7 @@
                 <div class="webhook-copy">
                     <strong>{{ $webhook['label'] ?: ($channel === 'email' ? $webhook['target'] : 'Webhook #'.$loop->iteration) }}</strong>
                     @if ($channel !== 'email')
-                        <span class="webhook-url-preview">{{ Str::limit($webhook['target'], 72) }}</span>
+                        <span class="webhook-url-preview">URL hidden for security.</span>
                     @endif
                     @if ($webhook['feed_count'] > 0)
                         <span class="webhook-url-preview">Used by {{ $webhook['feed_count'] }} {{ Str::plural('feed', $webhook['feed_count']) }}</span>

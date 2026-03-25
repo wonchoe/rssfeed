@@ -129,6 +129,8 @@
                                 @if ($subscription->channel === 'telegram' && $subscription->telegramChat !== null)
                                     <div style="font-weight:600;">{{ $subscription->telegramChat->displayName() }}</div>
                                     <div class="muted" style="font-size:12px; margin-top:4px;">{{ $subscription->telegramChat->kindLabel() }} · {{ $subscription->target }}</div>
+                                @elseif (in_array($subscription->channel, ['slack', 'discord', 'teams'], true))
+                                    {{ data_get($subscription->config, 'webhook_label') ?: 'Saved '.strtoupper($subscription->channel).' webhook' }}
                                 @else
                                     {{ $subscription->target }}
                                 @endif

@@ -559,6 +559,7 @@
             @csrf
             <input id="feed_builder_save_source_url" type="hidden" name="source_url" value="">
             <input id="feed_builder_telegram_chat_id" type="hidden" name="telegram_chat_id" value="">
+            <input id="feed_builder_webhook_integration_id" type="hidden" name="webhook_integration_id" value="">
             <input id="feed_builder_channel" type="hidden" name="channel" value="telegram">
             <input id="feed_builder_target" type="hidden" name="target" value="">
             <input type="hidden" name="polling_interval_minutes" value="30">
@@ -737,7 +738,8 @@
                                         class="feed-destination-choice"
                                         data-destination-choice
                                         data-destination-channel="{{ $wch }}"
-                                        data-destination-target="{{ $wh->webhook_url }}"
+                                        data-webhook-integration-id="{{ $wch === 'email' ? '' : $wh->id }}"
+                                        data-destination-target="{{ $wch === 'email' ? $wh->webhook_url : '' }}"
                                         data-destination-name="{{ $wh->label ?: ($wch === 'email' ? $wh->webhook_url : ucfirst($wch).' Webhook') }}"
                                     >
                                         <span class="feed-destination-avatar" style="border-radius:12px; font-size:14px; background:rgba(93,168,255,0.15); color:#7bbfff;">
@@ -746,7 +748,7 @@
                                         <span class="feed-destination-copy">
                                             <strong>{{ $wh->label ?: ($wch === 'email' ? $wh->webhook_url : ucfirst($wch).' Webhook') }}</strong>
                                             @if ($wch !== 'email')
-                                                <span style="font-size:11px;">{{ Str::limit($wh->webhook_url, 50) }}</span>
+                                                <span style="font-size:11px;">URL hidden for security.</span>
                                             @endif
                                         </span>
                                         <span class="feed-destination-arrow">
@@ -784,6 +786,7 @@
                 const sourceInput = document.getElementById('feed_builder_source_url');
                 const saveSourceInput = document.getElementById('feed_builder_save_source_url');
                 const saveTelegramChatInput = document.getElementById('feed_builder_telegram_chat_id');
+                const saveWebhookIntegrationInput = document.getElementById('feed_builder_webhook_integration_id');
                 const saveChannelInput = document.getElementById('feed_builder_channel');
                 const saveTargetInput = document.getElementById('feed_builder_target');
                 const statusNode = document.getElementById('feed-builder-status');
@@ -1166,6 +1169,7 @@
                         const channel = button.getAttribute('data-destination-channel') || 'telegram';
                         const chatId = button.getAttribute('data-telegram-chat-id') || '';
                         const target = button.getAttribute('data-destination-target') || '';
+                        const webhookIntegrationId = button.getAttribute('data-webhook-integration-id') || '';
                         const destinationName = button.getAttribute('data-destination-name') || 'your destination';
 
                         if (!sourceUrl) {
@@ -1178,14 +1182,20 @@
                             return;
                         }
 
-                        if (channel !== 'telegram' && !target) {
+                        if (channel === 'email' && !target) {
                             statusNode.textContent = 'Webhook target is missing.';
+                            return;
+                        }
+
+                        if (!['telegram', 'email'].includes(channel) && !webhookIntegrationId) {
+                            statusNode.textContent = 'Saved webhook destination is missing.';
                             return;
                         }
 
                         saveChannelInput.value = channel;
                         saveTelegramChatInput.value = chatId;
-                        saveTargetInput.value = target;
+                        saveWebhookIntegrationInput.value = webhookIntegrationId;
+                        saveTargetInput.value = channel === 'email' ? target : '';
                         statusNode.textContent = `Adding this feed to ${destinationName}...`;
 
                         destinationChoices.forEach((choice) => {

@@ -1134,7 +1134,7 @@
     <div class="intg-panel" data-intg-panel="teams">
         <section class="panel intg-section">
             <h3 class="intg-section-title">Microsoft Teams Webhooks</h3>
-            <p class="intg-section-desc">Add Teams Workflow webhook URLs. In Teams, create a Workflow (Power Automate) that posts to a channel, then paste the webhook URL here.</p>
+            <p class="intg-section-desc">Add Teams Workflow webhook URLs. Logic Apps, legacy Office connectors, and the newer Power Platform workflow URLs are supported. URLs are encrypted on the server and hidden after save.</p>
 
             <div class="intg-steps">
                 <div class="intg-step">
@@ -1144,7 +1144,7 @@
                     2. Create a "Post to a channel when a webhook request is received" workflow.
                 </div>
                 <div class="intg-step">
-                    3. Copy the generated URL and paste it below.
+                    3. Copy the generated URL and paste it below. After save, the full URL is no longer shown in the admin UI.
                 </div>
             </div>
 
@@ -1154,7 +1154,7 @@
                 <div class="webhook-add-row">
                     <div class="field">
                         <label class="field-label">Webhook URL</label>
-                        <input type="url" data-webhook-url-input placeholder="https://prod-XX.logic.azure.com/workflows/..." required>
+                        <input type="url" data-webhook-url-input placeholder="https://default...environment.api.powerplatform.com/powerautomate/..." required>
                     </div>
                     <button type="submit" class="btn" style="height:44px;">Add</button>
                 </div>

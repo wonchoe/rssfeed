@@ -15,6 +15,16 @@ class WebhookIntegration extends Model
         'label',
     ];
 
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'webhook_url' => 'encrypted',
+        ];
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

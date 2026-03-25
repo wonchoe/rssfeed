@@ -241,7 +241,13 @@
                                     <span class="badge badge-muted">Paused</span>
                                 @endif
                             </div>
-                            <p>{{ $subscription->target }}</p>
+                            <p>
+                                @if (in_array($subscription->channel, ['slack', 'discord', 'teams'], true))
+                                    {{ data_get($subscription->config, 'webhook_label') ?: 'Saved '.strtoupper($subscription->channel).' webhook' }}
+                                @else
+                                    {{ $subscription->target }}
+                                @endif
+                            </p>
                         </article>
                     @endforeach
                 </div>
