@@ -75,7 +75,7 @@ class SendTeamsMessageJob implements ShouldQueue
                 channel: 'teams',
                 target: $subscription->target,
                 title: $this->message,
-                body: '',
+                body: $this->summary,
                 url: $this->articleUrl,
                 imageUrl: $translatedArticle?->image_url ?? $article?->image_url,
                 context: $this->context,

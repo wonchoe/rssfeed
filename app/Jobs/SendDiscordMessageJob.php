@@ -61,7 +61,7 @@ class SendDiscordMessageJob implements ShouldQueue
                 channel: 'discord',
                 target: $subscription->target,
                 title: $this->message,
-                body: '',
+                body: $this->summary,
                 url: $this->articleUrl,
                 context: $this->context,
             ));

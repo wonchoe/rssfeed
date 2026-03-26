@@ -61,7 +61,7 @@ class SendSlackMessageJob implements ShouldQueue
                 channel: 'slack',
                 target: $subscription->target,
                 title: $this->message,
-                body: '',
+                body: $this->summary,
                 url: $this->articleUrl,
                 context: $this->context,
             ));
