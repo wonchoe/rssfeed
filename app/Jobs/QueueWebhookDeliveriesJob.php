@@ -133,6 +133,8 @@ class QueueWebhookDeliveriesJob implements ShouldQueue
                         channel: $this->channel,
                         articleUrl: $article->canonical_url,
                         message: $article->title,
+                        summary: (string) ($article->summary ?? ''),
+                        imageUrl: $article->image_url,
                         context: [
                             'delivery_id' => $delivery->id,
                             'article_id' => $article->id,
@@ -177,6 +179,8 @@ class QueueWebhookDeliveriesJob implements ShouldQueue
         string $channel,
         string $articleUrl,
         string $message,
+        string $summary,
+        ?string $imageUrl,
         array $context,
     ): void {
         $jobClass = match ($channel) {
@@ -194,6 +198,8 @@ class QueueWebhookDeliveriesJob implements ShouldQueue
             subscriptionId: $subscriptionId,
             articleUrl: $articleUrl,
             message: $message,
+            summary: $summary,
+            imageUrl: $imageUrl,
             context: $context,
         )->onQueue('delivery');
     }

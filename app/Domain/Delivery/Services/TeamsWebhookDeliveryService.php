@@ -41,11 +41,13 @@ class TeamsWebhookDeliveryService implements TeamsDeliveryService
             ];
         }
 
-        $body[] = [
-            'type' => 'TextBlock',
-            'text' => $message->body !== '' ? mb_substr($message->body, 0, 2000) : $message->url,
-            'wrap' => true,
-        ];
+        if ($message->body !== '') {
+            $body[] = [
+                'type' => 'TextBlock',
+                'text' => mb_substr($message->body, 0, 2000),
+                'wrap' => true,
+            ];
+        }
 
         $payload = [
             'type' => 'message',

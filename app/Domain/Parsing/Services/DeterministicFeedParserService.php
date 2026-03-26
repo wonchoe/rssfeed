@@ -439,7 +439,7 @@ class DeterministicFeedParserService implements FeedParserService
             return null;
         }
 
-        return UrlNormalizer::absolute($src, $sourceUrl);
+        return $this->sanitizeImageUrl(UrlNormalizer::absolute($src, $sourceUrl));
     }
 
     /**
@@ -584,6 +584,19 @@ class DeterministicFeedParserService implements FeedParserService
 
         foreach (['avatar', 'profile', 'author', 'user', 'logo', 'icon', 'emoji', 'favicon', 'gravatar', 'sprite', 'badge', 'placeholder'] as $blocked) {
             if (str_contains($value, $blocked)) {
+                return null;
+            }
+        }
+
+        // Reject URLs whose path has no recognizable image extension — these
+        // are often dynamic media endpoints that serve video or other non-image
+        // content (e.g. cdn-dynmedia-1.microsoft.com/is/content/…).
+        $path = parse_url($url, PHP_URL_PATH);
+
+        if (is_string($path) && $path !== '') {
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+            if ($ext === '' && preg_match('#/is/(?:content|image)/#i', $path) === 1) {
                 return null;
             }
         }

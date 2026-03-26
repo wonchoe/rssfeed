@@ -10,6 +10,7 @@ enum PipelineStage: string
     case Parse = 'parse';
     case Normalize = 'normalize';
     case Deduplicate = 'deduplicate';
+    case Enrich = 'enrich';
     case Cache = 'cache';
     case Deliver = 'deliver';
 }

@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Data\Article\NormalizedArticleData;
 use App\Domain\Article\Contracts\DeduplicationService;
-use App\Events\NewArticlesDetected;
 use App\Models\Article;
 use App\Models\Source;
 use App\Support\PipelineStage;
@@ -179,14 +178,14 @@ class DetectNewArticlesJob implements ShouldQueue
             return;
         }
 
-        NewArticlesDetected::dispatch(
+        EnrichNewArticlesJob::dispatch(
             sourceId: (string) $source->id,
-            newArticleCount: count($newArticleIds),
+            articleIds: $newArticleIds,
             context: array_merge($this->context, [
                 'pipeline_stage' => PipelineStage::Deduplicate->value,
                 'article_ids' => $newArticleIds,
             ]),
-        );
+        )->onQueue('default');
     }
 
     public function failed(Throwable $exception): void

@@ -26,13 +26,26 @@ class TelegramBotDeliveryService implements TelegramDeliveryService
         }
 
         $apiBase = rtrim((string) config('services.telegram.api_base', 'https://api.telegram.org'), '/');
-        $endpoint = $apiBase.'/bot'.$botToken.'/sendMessage';
 
-        $payload = [
-            'chat_id' => $message->target,
-            'text' => trim($message->title."\n".$message->url."\n\n".$message->body),
-            'disable_web_page_preview' => false,
-        ];
+        $text = trim($message->title."\n".$message->url.($message->body !== '' ? "\n\n".$message->body : ''));
+
+        if (is_string($message->imageUrl) && $message->imageUrl !== '') {
+            $endpoint = $apiBase.'/bot'.$botToken.'/sendPhoto';
+
+            $payload = [
+                'chat_id' => $message->target,
+                'photo' => $message->imageUrl,
+                'caption' => mb_substr($text, 0, 1024),
+            ];
+        } else {
+            $endpoint = $apiBase.'/bot'.$botToken.'/sendMessage';
+
+            $payload = [
+                'chat_id' => $message->target,
+                'text' => $text,
+                'disable_web_page_preview' => false,
+            ];
+        }
 
         $response = Http::asForm()
             ->timeout(10)

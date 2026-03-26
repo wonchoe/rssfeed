@@ -77,6 +77,8 @@ class TranslateArticleJob implements ShouldQueue
                 subscriptionId: (string) $subscription->id,
                 articleUrl: $articleUrl,
                 message: $message,
+                summary: (string) ($translated->summary ?? $article->summary ?? ''),
+                imageUrl: $translated->image_url ?? $article->image_url,
                 context: [
                     'delivery_id' => $recipient['delivery_id'],
                     'article_id' => $article->id,

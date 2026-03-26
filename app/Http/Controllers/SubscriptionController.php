@@ -319,6 +319,8 @@ class SubscriptionController extends Controller
             subscriptionId: (string) $subscription->id,
             articleUrl: $article->canonical_url,
             message: $article->title,
+            summary: (string) ($article->summary ?? ''),
+            imageUrl: $article->image_url,
             context: [
                 'delivery_id' => $delivery->id,
                 'article_id' => $article->id,
@@ -334,6 +336,8 @@ class SubscriptionController extends Controller
                 subscriptionId: (string) $subscription->id,
                 articleUrl: $article->canonical_url,
                 message: $article->title,
+                summary: (string) ($article->summary ?? ''),
+                imageUrl: $article->image_url,
                 context: [
                     'delivery_id' => $delivery->id,
                     'article_id' => $article->id,

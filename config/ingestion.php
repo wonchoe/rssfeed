@@ -83,5 +83,11 @@ return [
         'timeout_seconds' => env('INGESTION_PREVIEW_IMAGE_ENRICHMENT_TIMEOUT', 6),
         'ttl_minutes' => env('INGESTION_PREVIEW_IMAGE_ENRICHMENT_TTL', 720),
     ],
+    'article_enrichment' => [
+        'enabled' => (bool) env('INGESTION_ARTICLE_ENRICHMENT_ENABLED', true),
+        'max_articles_per_batch' => env('INGESTION_ARTICLE_ENRICHMENT_MAX_PER_BATCH', 20),
+        'timeout_seconds' => env('INGESTION_ARTICLE_ENRICHMENT_TIMEOUT', 6),
+        'ttl_minutes' => env('INGESTION_ARTICLE_ENRICHMENT_TTL', 720),
+    ],
     'feed_generation_timeout_seconds' => env('FEED_GENERATION_TIMEOUT_SECONDS', 180),
 ];

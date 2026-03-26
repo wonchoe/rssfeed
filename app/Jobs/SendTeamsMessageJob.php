@@ -29,6 +29,8 @@ class SendTeamsMessageJob implements ShouldQueue
         public readonly string $subscriptionId,
         public readonly string $articleUrl,
         public readonly string $message,
+        public readonly string $summary = '',
+        public readonly ?string $imageUrl = null,
         public readonly array $context = [],
     ) {}
 

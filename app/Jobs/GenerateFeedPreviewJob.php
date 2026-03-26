@@ -12,7 +12,7 @@ use App\Models\Article;
 use App\Models\FeedGeneration;
 use App\Models\ParseAttempt;
 use App\Models\Source;
-use App\Support\ArticleImageResolver;
+use App\Support\ArticlePageEnricher;
 use App\Support\ParseAttemptTracker;
 use App\Support\ParserSchemaRegistry;
 use App\Support\PipelineStage;
@@ -60,7 +60,7 @@ class GenerateFeedPreviewJob implements ShouldQueue
         SourceHealthTracker $healthTracker,
         ParseAttemptTracker $attemptTracker,
         ParserSchemaRegistry $schemaRegistry,
-        ArticleImageResolver $articleImageResolver,
+        ArticlePageEnricher $articleImageResolver,
     ): void {
         $generation = FeedGeneration::query()->find($this->generationId);
 
@@ -805,7 +805,7 @@ class GenerateFeedPreviewJob implements ShouldQueue
      * @param  list<ParsedArticleData>  $parsedArticles
      * @return list<ParsedArticleData>
      */
-    private function enrichParsedArticlesWithImages(array $parsedArticles, ArticleImageResolver $imageResolver): array
+    private function enrichParsedArticlesWithImages(array $parsedArticles, ArticlePageEnricher $imageResolver): array
     {
         $maxLookups = max(0, (int) config('ingestion.preview_image_enrichment.max_items', 12));
 
@@ -822,7 +822,7 @@ class GenerateFeedPreviewJob implements ShouldQueue
                 $lookups < $maxLookups &&
                 trim($article->url) !== ''
             ) {
-                $resolvedImage = $imageResolver->resolve($article->url);
+                $resolvedImage = $imageResolver->resolveImage($article->url);
                 $lookups++;
 
                 if ($resolvedImage !== null) {
@@ -853,7 +853,7 @@ class GenerateFeedPreviewJob implements ShouldQueue
     private function enrichCachedPreviewItems(
         Source $source,
         array $previewItems,
-        ArticleImageResolver $imageResolver,
+        ArticlePageEnricher $imageResolver,
     ): array {
         $maxLookups = max(0, (int) config('ingestion.preview_image_enrichment.max_items', 12));
 
@@ -872,7 +872,7 @@ class GenerateFeedPreviewJob implements ShouldQueue
                 continue;
             }
 
-            $resolvedImage = $imageResolver->resolve($articleUrl);
+            $resolvedImage = $imageResolver->resolveImage($articleUrl);
             $lookups++;
 
             if ($resolvedImage === null) {

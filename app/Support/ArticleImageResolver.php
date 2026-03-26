@@ -149,6 +149,20 @@ class ArticleImageResolver
             return false;
         }
 
-        return true;
+        try {
+            $response = Http::timeout(4)
+                ->withUserAgent((string) config('ingestion.fetch.user_agent'))
+                ->head($url);
+
+            if (! $response->successful()) {
+                return false;
+            }
+
+            $contentType = $response->header('Content-Type') ?? '';
+
+            return str_starts_with($contentType, 'image/');
+        } catch (Throwable) {
+            return false;
+        }
     }
 }
