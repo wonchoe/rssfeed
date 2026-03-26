@@ -116,7 +116,9 @@ class EnrichNewArticlesJob implements ShouldQueue
             'total_articles' => count($ids),
         ]);
 
-        $this->fireNewArticlesDetected();
+        if (! ($this->context['skip_delivery'] ?? false)) {
+            $this->fireNewArticlesDetected();
+        }
     }
 
     private function fireNewArticlesDetected(): void
@@ -133,7 +135,9 @@ class EnrichNewArticlesJob implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        // Even if enrichment fails, fire de event so delivery still happens
-        $this->fireNewArticlesDetected();
+        // Even if enrichment fails, fire the event so delivery still happens (unless skip_delivery)
+        if (! ($this->context['skip_delivery'] ?? false)) {
+            $this->fireNewArticlesDetected();
+        }
     }
 }
