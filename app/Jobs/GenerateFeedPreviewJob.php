@@ -100,7 +100,7 @@ class GenerateFeedPreviewJob implements ShouldQueue
                 return;
             }
 
-            $existingSource = $sourceCatalog->findByNormalizedUrl($requestedUrl);
+            $existingSource = $sourceCatalog->findByNormalizedUrl($requestedUrl, includeAliases: false);
 
             if ($existingSource !== null) {
                 $sourceCatalog->attachAlias($existingSource, $generation->requested_url);

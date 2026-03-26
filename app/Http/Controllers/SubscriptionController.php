@@ -58,6 +58,7 @@ class SubscriptionController extends Controller
         $source = $sourceCatalog->findOrCreate(
             url: $normalizedSourceUrl,
             pollingIntervalMinutes: (int) $validated['polling_interval_minutes'],
+            includeAliases: false,
         );
         $sourceCatalog->attachAlias($source, $submittedSourceUrl);
         $sourceCatalog->updateSourceHostMeta($source, $normalizedSourceUrl);

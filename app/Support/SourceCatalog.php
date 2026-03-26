@@ -24,21 +24,25 @@ class SourceCatalog
         return $this->findByNormalizedUrl($normalizedUrl);
     }
 
-    public function findByNormalizedUrl(string $normalizedUrl): ?Source
+    public function findByNormalizedUrl(string $normalizedUrl, bool $includeAliases = true): ?Source
     {
         $hash = hash('sha256', Str::lower($normalizedUrl));
 
-        return Source::query()
+        $query = Source::query()
             ->where('source_url_hash', $hash)
-            ->orWhere('canonical_url_hash', $hash)
-            ->orWhereHas('aliases', fn ($query) => $query->where('normalized_alias_hash', $hash))
-            ->first();
+            ->orWhere('canonical_url_hash', $hash);
+
+        if ($includeAliases) {
+            $query->orWhereHas('aliases', fn ($aliasQuery) => $aliasQuery->where('normalized_alias_hash', $hash));
+        }
+
+        return $query->first();
     }
 
-    public function findOrCreate(string $url, int $pollingIntervalMinutes = 30): Source
+    public function findOrCreate(string $url, int $pollingIntervalMinutes = 30, bool $includeAliases = true): Source
     {
         $normalizedUrl = $this->normalizeSubmittedUrl($url);
-        $existing = $this->findByNormalizedUrl($normalizedUrl);
+        $existing = $this->findByNormalizedUrl($normalizedUrl, $includeAliases);
 
         if ($existing !== null) {
             return $existing;
