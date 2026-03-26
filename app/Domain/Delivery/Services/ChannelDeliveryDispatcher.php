@@ -45,6 +45,7 @@ class ChannelDeliveryDispatcher implements DeliveryDispatcher
                     title: $article->title,
                     body: $article->summary ?? '',
                     url: $article->canonicalUrl,
+                    imageUrl: $article->imageUrl,
                     context: [
                         'subscription_id' => $subscription->subscriptionId,
                     ],

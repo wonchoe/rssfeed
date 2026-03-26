@@ -23,6 +23,30 @@ class TeamsWebhookDeliveryService implements TeamsDeliveryService
         }
 
         // Adaptive Card payload for Teams Workflows (Power Automate) connector
+        $body = [
+            [
+                'type' => 'TextBlock',
+                'size' => 'Medium',
+                'weight' => 'Bolder',
+                'text' => mb_substr($message->title, 0, 256),
+            ],
+        ];
+
+        if (is_string($message->imageUrl) && trim($message->imageUrl) !== '') {
+            $body[] = [
+                'type' => 'Image',
+                'url' => $message->imageUrl,
+                'altText' => mb_substr($message->title, 0, 256),
+                'size' => 'Stretch',
+            ];
+        }
+
+        $body[] = [
+            'type' => 'TextBlock',
+            'text' => $message->body !== '' ? mb_substr($message->body, 0, 2000) : $message->url,
+            'wrap' => true,
+        ];
+
         $payload = [
             'type' => 'message',
             'attachments' => [
@@ -33,19 +57,7 @@ class TeamsWebhookDeliveryService implements TeamsDeliveryService
                         '$schema' => 'http://adaptivecards.io/schemas/adaptive-card.json',
                         'type' => 'AdaptiveCard',
                         'version' => '1.4',
-                        'body' => [
-                            [
-                                'type' => 'TextBlock',
-                                'size' => 'Medium',
-                                'weight' => 'Bolder',
-                                'text' => mb_substr($message->title, 0, 256),
-                            ],
-                            [
-                                'type' => 'TextBlock',
-                                'text' => $message->body !== '' ? mb_substr($message->body, 0, 2000) : $message->url,
-                                'wrap' => true,
-                            ],
-                        ],
+                        'body' => $body,
                         'actions' => [
                             [
                                 'type' => 'Action.OpenUrl',

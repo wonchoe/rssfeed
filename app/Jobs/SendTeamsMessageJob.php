@@ -6,6 +6,7 @@ use App\Data\Delivery\DeliveryMessageData;
 use App\Domain\Delivery\Contracts\TeamsDeliveryService;
 use App\Events\DeliveryFailed;
 use App\Events\DeliverySucceeded;
+use App\Models\Article;
 use App\Models\Delivery;
 use App\Models\Subscription;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -53,6 +54,12 @@ class SendTeamsMessageJob implements ShouldQueue
         $delivery = $deliveryId !== null
             ? Delivery::query()->find($deliveryId)
             : null;
+        $articleId = is_numeric($this->context['article_id'] ?? null)
+            ? (int) $this->context['article_id']
+            : null;
+        $article = $articleId !== null
+            ? Article::query()->find($articleId)
+            : null;
 
         try {
             $teamsDeliveryService->send(new DeliveryMessageData(
@@ -61,6 +68,7 @@ class SendTeamsMessageJob implements ShouldQueue
                 title: $this->message,
                 body: '',
                 url: $this->articleUrl,
+                imageUrl: $article?->image_url,
                 context: $this->context,
             ));
 

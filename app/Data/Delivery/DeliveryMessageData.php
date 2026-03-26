@@ -13,6 +13,7 @@ readonly class DeliveryMessageData
         public string $title,
         public string $body,
         public string $url,
+        public ?string $imageUrl = null,
         public array $context = [],
     ) {}
 }
