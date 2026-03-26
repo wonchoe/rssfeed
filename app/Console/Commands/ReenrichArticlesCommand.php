@@ -4,14 +4,17 @@ namespace App\Console\Commands;
 
 use App\Jobs\EnrichNewArticlesJob;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ReenrichArticlesCommand extends Command
 {
     protected $signature = 'articles:reenrich
                             {--source= : Source ID (omit for all sources)}
                             {--batch=20 : Articles per job}
-                            {--force : Re-enrich even if article already has summary and image}';
+                            {--force : Re-enrich even if article already has summary and image}
+                            {--clear-cache : Clear enrichment cache for all processed articles}';
 
     protected $description = 'Re-enrich existing articles with og:image and og:description without re-delivering to subscriptions';
 
@@ -68,8 +71,19 @@ class ReenrichArticlesCommand extends Command
 
         $totalJobs = 0;
         $totalArticles = 0;
+        $clearCache = (bool) $this->option('clear-cache');
 
         foreach ($bySource as $srcId => $articleIds) {
+            if ($clearCache) {
+                // Clear enrichment cache for each article URL
+                $urls = DB::table('articles')->whereIn('id', $articleIds)->pluck('canonical_url');
+                foreach ($urls as $url) {
+                    if ($url) {
+                        Cache::forget('ingestion:enrichment:'.hash('sha256', Str::lower($url)));
+                    }
+                }
+            }
+
             $chunks = array_chunk($articleIds, $batchSize);
             foreach ($chunks as $chunk) {
                 EnrichNewArticlesJob::dispatch(
