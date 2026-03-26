@@ -120,14 +120,21 @@ class ArticlePageEnricher
 
         $xpath = new DOMXPath($dom);
 
+        $title = $this->extractTitle($xpath, $baseUrl);
+        $description = $this->extractDescription($xpath);
+
+        if ($description === null) {
+            $description = $this->extractArticleParagraphFallback($xpath);
+        }
+
         return [
-            'title' => $this->extractTitle($xpath),
+            'title' => $title,
             'image_url' => $this->extractImage($xpath, $baseUrl),
-            'description' => $this->extractDescription($xpath),
+            'description' => $description,
         ];
     }
 
-    private function extractTitle(DOMXPath $xpath): ?string
+    private function extractTitle(DOMXPath $xpath, string $baseUrl): ?string
     {
         $queries = [
             '//meta[@property="og:title"]/@content',
@@ -153,7 +160,7 @@ class ArticlePageEnricher
                 continue;
             }
 
-            $clean = $this->sanitizeTitle($raw);
+            $clean = $this->sanitizeTitle($raw, $baseUrl);
 
             if ($clean !== null) {
                 return $clean;
@@ -173,6 +180,10 @@ class ArticlePageEnricher
             '//meta[@name="twitter:image"]/@content',
             '//meta[@name="twitter:image:src"]/@content',
             '//link[contains(@rel,"image_src")]/@href',
+            '//meta[@itemprop="image"]/@content',
+            '//img[@srcset][1]/@srcset',
+            '//img[@data-src][1]/@data-src',
+            '//img[@data-lazy-src][1]/@data-lazy-src',
             '//article//img[@src][1]/@src',
             '//main//img[@src][1]/@src',
         ];
@@ -189,6 +200,11 @@ class ArticlePageEnricher
             }
 
             $value = trim((string) ($nodes->item(0)?->nodeValue ?? ''));
+
+            if (str_contains($query, '@srcset')) {
+                $value = $this->extractBestSrcsetCandidate($value);
+            }
+
             $normalized = $this->normalizeImageCandidate($value, $baseUrl);
 
             if ($normalized !== null) {
@@ -240,24 +256,140 @@ class ArticlePageEnricher
         $stripped = trim(strip_tags($decoded));
         $clean = preg_replace('/\s+/u', ' ', $stripped) ?: '';
 
-        if ($clean === '' || mb_strlen($clean) < 20) {
+        if ($clean === '' || mb_strlen($clean) < 20 || $this->looksGenericDescription($clean)) {
             return null;
         }
 
         return Str::limit($clean, 420, '...');
     }
 
-    private function sanitizeTitle(string $raw): ?string
+    private function sanitizeTitle(string $raw, string $baseUrl): ?string
     {
         $decoded = html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $stripped = trim(strip_tags($decoded));
         $clean = preg_replace('/\s+/u', ' ', $stripped) ?: '';
+        $clean = $this->stripCommonTitleSuffixes($clean, $baseUrl);
 
-        if ($clean === '' || mb_strlen($clean) < 12) {
+        if ($clean === '' || mb_strlen($clean) < 12 || $this->looksGenericTitle($clean, $baseUrl)) {
             return null;
         }
 
         return Str::limit($clean, 240, '...');
+    }
+
+    private function extractArticleParagraphFallback(DOMXPath $xpath): ?string
+    {
+        $queries = [
+            '//article//p[string-length(normalize-space()) > 80][1]',
+            '//main//p[string-length(normalize-space()) > 80][1]',
+            '(//p[string-length(normalize-space()) > 80])[1]',
+        ];
+
+        foreach ($queries as $query) {
+            try {
+                $nodes = $xpath->query($query);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if ($nodes === false || $nodes->length === 0) {
+                continue;
+            }
+
+            $raw = trim((string) ($nodes->item(0)?->textContent ?? ''));
+            $clean = $this->sanitizeDescription($raw);
+
+            if ($clean !== null) {
+                return $clean;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractBestSrcsetCandidate(string $srcset): string
+    {
+        $candidates = array_values(array_filter(array_map('trim', explode(',', $srcset))));
+
+        if ($candidates === []) {
+            return '';
+        }
+
+        $best = end($candidates);
+
+        if (! is_string($best) || trim($best) === '') {
+            return '';
+        }
+
+        return trim((string) preg_split('/\s+/', $best)[0]);
+    }
+
+    private function stripCommonTitleSuffixes(string $title, string $baseUrl): string
+    {
+        $host = (string) parse_url($baseUrl, PHP_URL_HOST);
+        $labels = array_values(array_filter(array_unique([
+            $host,
+            preg_replace('/^www\./i', '', $host) ?: '',
+            Str::of($host)->replaceMatches('/^www\./i', '')->before('.')->replace(['-', '_'], ' ')->title()->value(),
+            'GitHub Blog',
+            'GitHub Changelog',
+            'Microsoft Azure Blog',
+            'Microsoft SQL Server Blog',
+            'Amazon Web Services',
+        ])));
+
+        foreach ($labels as $label) {
+            $quoted = preg_quote($label, '/');
+            $title = preg_replace('/\s*[-|:\x{2013}\x{2014}]\s*'.$quoted.'$/iu', '', $title) ?: $title;
+        }
+
+        return trim($title);
+    }
+
+    private function looksGenericTitle(string $title, string $baseUrl): bool
+    {
+        $lower = Str::lower($title);
+        $host = Str::lower((string) parse_url($baseUrl, PHP_URL_HOST));
+        $siteName = Str::lower((string) Str::of($host)->replaceFirst('www.', '')->before('.')->replace(['-', '_'], ' '));
+
+        if ($lower === $host || $lower === $siteName) {
+            return true;
+        }
+
+        foreach ([
+            'home',
+            'homepage',
+            'news |',
+            'blog |',
+            'updates |',
+            'microsoft azure',
+            'azure updates',
+        ] as $blocked) {
+            if ($lower === $blocked || str_contains($lower, $blocked.' |')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function looksGenericDescription(string $description): bool
+    {
+        $lower = Str::lower(trim($description));
+
+        foreach ([
+            'subscribe to microsoft azure today for service updates',
+            'check out the new cloud platform roadmap',
+            'the latest news from',
+            'learn more about',
+            'read more about',
+        ] as $blocked) {
+            if (str_contains($lower, $blocked)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function normalizeImageCandidate(string $value, string $baseUrl): ?string
@@ -294,6 +426,30 @@ class ArticlePageEnricher
                 ->head($url);
 
             if (! $response->successful()) {
+                return $this->verifyImageContentTypeWithGet($url);
+            }
+
+            $contentType = Str::lower($response->header('Content-Type') ?? '');
+
+            if (str_starts_with($contentType, 'image/')) {
+                return true;
+            }
+
+            return $this->verifyImageContentTypeWithGet($url);
+        } catch (Throwable) {
+            return $this->verifyImageContentTypeWithGet($url);
+        }
+    }
+
+    private function verifyImageContentTypeWithGet(string $url): bool
+    {
+        try {
+            $response = Http::timeout(6)
+                ->withUserAgent((string) config('ingestion.fetch.user_agent'))
+                ->withHeaders(['Range' => 'bytes=0-0'])
+                ->get($url);
+
+            if (! $response->successful() && $response->status() !== 206) {
                 return false;
             }
 
@@ -301,8 +457,7 @@ class ArticlePageEnricher
 
             return str_starts_with($contentType, 'image/');
         } catch (Throwable) {
-            // Network error — give it the benefit of the doubt
-            return true;
+            return false;
         }
     }
 
