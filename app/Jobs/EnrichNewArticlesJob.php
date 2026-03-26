@@ -67,7 +67,9 @@ class EnrichNewArticlesJob implements ShouldQueue
                 continue;
             }
 
-            $needsImage = $article->image_url === null || $article->image_url === '';
+            $needsImage = $article->image_url === null
+                || $article->image_url === ''
+                || (is_string($article->image_url) && ! $enricher->isAcceptableImageUrl($article->image_url));
             $needsSummary = $article->summary === null || $article->summary === '';
 
             if (! $needsImage && ! $needsSummary) {

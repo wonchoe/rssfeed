@@ -254,7 +254,7 @@ class ArticlePageEnricher
         }
     }
 
-    private function isAcceptableImageUrl(string $url): bool
+    public function isAcceptableImageUrl(string $url): bool
     {
         $lower = Str::lower($url);
 
@@ -262,6 +262,15 @@ class ArticlePageEnricher
             if (str_contains($lower, $blocked)) {
                 return false;
             }
+        }
+
+        // Cloudflare cdn-cgi/image/ with face-crop or small dimensions = author avatar
+        if (str_contains($lower, 'cdn-cgi/image/') && (
+            str_contains($lower, 'gravity=face')
+            || str_contains($lower, 'fit=crop')
+            || (preg_match('/(?:width|w)=([1-9]\d?)(?:[,&]|$)/i', $url, $m) === 1 && (int) $m[1] < 200)
+        )) {
+            return false;
         }
 
         $host = parse_url($url, PHP_URL_HOST);
