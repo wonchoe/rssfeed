@@ -9,6 +9,7 @@ use App\Events\DeliverySucceeded;
 use App\Models\Article;
 use App\Models\Delivery;
 use App\Models\Subscription;
+use App\Models\TranslatedArticle;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -60,6 +61,12 @@ class SendTeamsMessageJob implements ShouldQueue
         $article = $articleId !== null
             ? Article::query()->find($articleId)
             : null;
+        $translatedArticleId = is_numeric($this->context['translated_article_id'] ?? null)
+            ? (int) $this->context['translated_article_id']
+            : null;
+        $translatedArticle = $translatedArticleId !== null
+            ? TranslatedArticle::query()->find($translatedArticleId)
+            : null;
 
         try {
             $teamsDeliveryService->send(new DeliveryMessageData(
@@ -68,7 +75,7 @@ class SendTeamsMessageJob implements ShouldQueue
                 title: $this->message,
                 body: '',
                 url: $this->articleUrl,
-                imageUrl: $article?->image_url,
+                imageUrl: $translatedArticle?->image_url ?? $article?->image_url,
                 context: $this->context,
             ));
 

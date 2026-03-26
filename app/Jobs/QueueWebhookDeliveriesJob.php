@@ -14,6 +14,8 @@ class QueueWebhookDeliveriesJob implements ShouldQueue
 {
     use Queueable;
 
+    private const TRANSLATABLE_CHANNELS = ['teams'];
+
     public int $tries = 4;
 
     public int $timeout = 120;
@@ -69,6 +71,7 @@ class QueueWebhookDeliveriesJob implements ShouldQueue
             ->keyBy('id');
 
         $queuedCount = 0;
+        $translationBatch = []; // keyed by "{channel}-{articleId}-{language}"
 
         foreach ($subscriptions as $subscription) {
             foreach ($normalizedArticleIds as $articleId) {
@@ -103,31 +106,52 @@ class QueueWebhookDeliveriesJob implements ShouldQueue
                     ]);
                 }
 
-                $jobClass = match ($this->channel) {
-                    'slack' => SendSlackMessageJob::class,
-                    'discord' => SendDiscordMessageJob::class,
-                    'teams' => SendTeamsMessageJob::class,
-                    default => null,
-                };
+                if (
+                    in_array($this->channel, self::TRANSLATABLE_CHANNELS, true)
+                    && $subscription->translate_enabled
+                    && $subscription->translate_language
+                ) {
+                    $batchKey = $this->channel.'-'.$article->id.'-'.$subscription->translate_language;
 
-                if ($jobClass === null) {
-                    continue;
-                }
+                    if (! isset($translationBatch[$batchKey])) {
+                        $translationBatch[$batchKey] = [
+                            'channel' => $this->channel,
+                            'article_id' => $article->id,
+                            'language' => $subscription->translate_language,
+                            'recipients' => [],
+                        ];
+                    }
 
-                $jobClass::dispatch(
-                    subscriptionId: (string) $subscription->id,
-                    articleUrl: $article->canonical_url,
-                    message: $article->title,
-                    context: [
+                    $translationBatch[$batchKey]['recipients'][] = [
+                        'subscription_id' => $subscription->id,
                         'delivery_id' => $delivery->id,
-                        'article_id' => $article->id,
-                        'source_id' => $this->sourceId,
-                        'pipeline_stage' => PipelineStage::Deliver->value,
-                    ],
-                )->onQueue('delivery');
+                        'channel' => $this->channel,
+                    ];
+                } else {
+                    $this->dispatchChannelMessage(
+                        subscriptionId: (string) $subscription->id,
+                        channel: $this->channel,
+                        articleUrl: $article->canonical_url,
+                        message: $article->title,
+                        context: [
+                            'delivery_id' => $delivery->id,
+                            'article_id' => $article->id,
+                            'source_id' => $this->sourceId,
+                            'pipeline_stage' => PipelineStage::Deliver->value,
+                        ],
+                    );
+                }
 
                 $queuedCount++;
             }
+        }
+
+        foreach ($translationBatch as $batch) {
+            TranslateArticleJob::dispatch(
+                articleId: $batch['article_id'],
+                language: $batch['language'],
+                recipients: $batch['recipients'],
+            )->onQueue('translation');
         }
 
         if ($queuedCount === 0) {
@@ -143,5 +167,34 @@ class QueueWebhookDeliveriesJob implements ShouldQueue
                 'queued_messages' => $queuedCount,
             ]),
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function dispatchChannelMessage(
+        string $subscriptionId,
+        string $channel,
+        string $articleUrl,
+        string $message,
+        array $context,
+    ): void {
+        $jobClass = match ($channel) {
+            'slack' => SendSlackMessageJob::class,
+            'discord' => SendDiscordMessageJob::class,
+            'teams' => SendTeamsMessageJob::class,
+            default => null,
+        };
+
+        if ($jobClass === null) {
+            return;
+        }
+
+        $jobClass::dispatch(
+            subscriptionId: $subscriptionId,
+            articleUrl: $articleUrl,
+            message: $message,
+            context: $context,
+        )->onQueue('delivery');
     }
 }

@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Domain\Article\Contracts\ArticleTranslationService;
 use App\Models\Article;
-use App\Models\Delivery;
 use App\Models\Subscription;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -18,7 +17,7 @@ class TranslateArticleJob implements ShouldQueue
     public int $timeout = 300;
 
     /**
-     * @param  array<int, array{subscription_id: int, delivery_id: int}>  $recipients
+        * @param  array<int, array{subscription_id: int, delivery_id: int, channel?: string}>  $recipients
      */
     public function __construct(
         public readonly int $articleId,
@@ -62,7 +61,19 @@ class TranslateArticleJob implements ShouldQueue
                 continue;
             }
 
-            SendTelegramMessageJob::dispatch(
+            $channel = (string) ($recipient['channel'] ?? $subscription->channel);
+
+            $jobClass = match ($channel) {
+                'telegram' => SendTelegramMessageJob::class,
+                'teams' => SendTeamsMessageJob::class,
+                default => null,
+            };
+
+            if ($jobClass === null) {
+                continue;
+            }
+
+            $jobClass::dispatch(
                 subscriptionId: (string) $subscription->id,
                 articleUrl: $articleUrl,
                 message: $message,
@@ -71,6 +82,7 @@ class TranslateArticleJob implements ShouldQueue
                     'article_id' => $article->id,
                     'source_id' => $subscription->source_id,
                     'translated_article_id' => $translated->id,
+                    'translated_channel' => $channel,
                     'pipeline_stage' => 'deliver',
                 ],
             )->onQueue('delivery');
