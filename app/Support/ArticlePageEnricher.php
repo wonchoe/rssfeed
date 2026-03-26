@@ -128,12 +128,13 @@ class ArticlePageEnricher
     private function extractImage(DOMXPath $xpath, string $baseUrl): ?string
     {
         $queries = [
-            '//meta[translate(@property,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="og:image"]/@content',
-            '//meta[translate(@property,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="og:image:url"]/@content',
-            '//meta[translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="og:image"]/@content',
-            '//meta[translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="twitter:image"]/@content',
-            '//meta[translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="twitter:image:src"]/@content',
-            '//link[contains(translate(@rel,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"image_src")]/@href',
+            '//meta[@property="og:image"]/@content',
+            '//meta[@property="og:image:url"]/@content',
+            '//meta[@property="OG:IMAGE"]/@content',
+            '//meta[@name="og:image"]/@content',
+            '//meta[@name="twitter:image"]/@content',
+            '//meta[@name="twitter:image:src"]/@content',
+            '//link[contains(@rel,"image_src")]/@href',
             '//article//img[@src][1]/@src',
             '//main//img[@src][1]/@src',
         ];
@@ -163,9 +164,9 @@ class ArticlePageEnricher
     private function extractDescription(DOMXPath $xpath): ?string
     {
         $queries = [
-            '//meta[translate(@property,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="og:description"]/@content',
-            '//meta[translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="description"]/@content',
-            '//meta[translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="twitter:description"]/@content',
+            '//meta[@property="og:description"]/@content',
+            '//meta[@name="description"]/@content',
+            '//meta[@name="twitter:description"]/@content',
         ];
 
         foreach ($queries as $query) {
