@@ -76,6 +76,13 @@ class TeamsWebhookDeliveryService implements TeamsDeliveryService
             ->timeout(10)
             ->post($webhookUrl, $payload);
 
+        \Log::info('[Teams] Webhook response', [
+            'status' => $response->status(),
+            'body' => mb_substr($response->body(), 0, 500),
+            'image_in_payload' => $message->imageUrl,
+            'body_blocks' => count($body),
+        ]);
+
         if (! $response->successful()) {
             throw new RuntimeException('Teams webhook request failed with status '.$response->status().'.');
         }
