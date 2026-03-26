@@ -82,18 +82,27 @@ class EnrichNewArticlesJob implements ShouldQueue
                 continue;
             }
 
-            if (! $enrichment->hasUsefulData()) {
-                continue;
-            }
-
             $updates = [];
 
-            if ($needsImage && $enrichment->imageUrl !== null) {
-                $updates['image_url'] = $enrichment->imageUrl;
+            if ($needsImage) {
+                $existingIsEmpty = $article->image_url === null || $article->image_url === '';
+                $enrichedImage = $enrichment->imageUrl !== null && $enricher->isAcceptableImageUrl($enrichment->imageUrl)
+                    ? $enrichment->imageUrl
+                    : null;
+
+                if ($enrichedImage !== null) {
+                    $updates['image_url'] = $enrichedImage; // Upgrade to a verified good image
+                } elseif (! $existingIsEmpty) {
+                    $updates['image_url'] = null; // Clear the unacceptable existing image
+                }
             }
 
             if ($needsSummary && $enrichment->description !== null) {
                 $updates['summary'] = $enrichment->description;
+            }
+
+            if (! $enrichment->hasUsefulData() && $updates === []) {
+                continue;
             }
 
             if ($updates !== []) {
