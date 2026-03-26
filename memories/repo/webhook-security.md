@@ -1,0 +1,3 @@
+- WebhookIntegration.webhook_url is stored with Laravel encrypted cast; Subscription.target is also encrypted.
+- Slack/Discord/Teams subscriptions must use webhook_integration_id from a saved integration instead of posting a raw webhook URL from the UI.
+- Existing plaintext webhook targets are migrated by 2026_03_25_120000_encrypt_webhook_targets.php; subscriptions.target column is text to fit encrypted payloads.

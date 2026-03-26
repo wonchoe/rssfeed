@@ -70,6 +70,20 @@ class SendTeamsMessageJob implements ShouldQueue
             ? TranslatedArticle::query()->find($translatedArticleId)
             : null;
 
+        $resolvedImage = $translatedArticle?->image_url ?? $article?->image_url ?? $this->imageUrl;
+
+        \Log::info('[Teams] Sending message', [
+            'subscription_id' => $this->subscriptionId,
+            'article_url' => $this->articleUrl,
+            'title' => $this->message,
+            'image_url' => $resolvedImage,
+            'image_sources' => [
+                'translated' => $translatedArticle?->image_url,
+                'article' => $article?->image_url,
+                'constructor' => $this->imageUrl,
+            ],
+        ]);
+
         try {
             $teamsDeliveryService->send(new DeliveryMessageData(
                 channel: 'teams',
@@ -77,7 +91,7 @@ class SendTeamsMessageJob implements ShouldQueue
                 title: $this->message,
                 body: $this->summary,
                 url: $this->articleUrl,
-                imageUrl: $translatedArticle?->image_url ?? $article?->image_url,
+                imageUrl: $resolvedImage,
                 context: $this->context,
             ));
 
