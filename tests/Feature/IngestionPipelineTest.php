@@ -42,7 +42,7 @@ class IngestionPipelineTest extends TestCase
 
         $this->assertDatabaseCount('source_fetches', 1);
         $this->assertDatabaseCount('articles', 2);
-        $this->assertDatabaseCount('deliveries', 2);
+        $this->assertDatabaseCount('deliveries', 1); // only latest article per batch is delivered
         $this->assertDatabaseCount('parser_schemas', 1);
         $this->assertDatabaseCount('parse_attempts', 3);
         $this->assertDatabaseCount('source_snapshots', 2);

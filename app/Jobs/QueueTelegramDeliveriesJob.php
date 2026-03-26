@@ -65,10 +65,15 @@ class QueueTelegramDeliveriesJob implements ShouldQueue
             return;
         }
 
+        // Only deliver the single most-recent article per batch to avoid flooding channels
         $articles = Article::query()
             ->whereIn('id', $normalizedArticleIds)
+            ->orderByDesc('published_at')
             ->get()
             ->keyBy('id');
+
+        $normalizedArticleIds = [$articles->first()->id ?? null];
+        $normalizedArticleIds = array_filter($normalizedArticleIds);
 
         $queuedCount = 0;
         $translationBatch = []; // keyed by "{articleId}-{language}"
