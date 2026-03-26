@@ -10,6 +10,7 @@ use App\Models\Article;
 use App\Models\Delivery;
 use App\Models\Subscription;
 use App\Models\TranslatedArticle;
+use App\Support\ArticlePageEnricher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -42,7 +43,7 @@ class SendTeamsMessageJob implements ShouldQueue
         return [5, 20, 60, 180, 300];
     }
 
-    public function handle(TeamsDeliveryService $teamsDeliveryService): void
+    public function handle(TeamsDeliveryService $teamsDeliveryService, ArticlePageEnricher $enricher): void
     {
         $subscription = Subscription::query()->find($this->subscriptionId);
 
@@ -71,6 +72,10 @@ class SendTeamsMessageJob implements ShouldQueue
             : null;
 
         $resolvedImage = $translatedArticle?->image_url ?? $article?->image_url ?? $this->imageUrl;
+
+        if (is_string($resolvedImage) && $resolvedImage !== '' && ! $enricher->isAcceptableImageUrl($resolvedImage)) {
+            $resolvedImage = null;
+        }
 
         \Log::info('[Teams] Sending message', [
             'subscription_id' => $this->subscriptionId,

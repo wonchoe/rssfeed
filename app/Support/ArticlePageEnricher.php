@@ -173,22 +173,30 @@ class ArticlePageEnricher
     private function extractImage(DOMXPath $xpath, string $baseUrl): ?string
     {
         $queries = [
-            '//meta[@property="og:image"]/@content',
-            '//meta[@property="og:image:url"]/@content',
-            '//meta[@property="OG:IMAGE"]/@content',
-            '//meta[@name="og:image"]/@content',
-            '//meta[@name="twitter:image"]/@content',
-            '//meta[@name="twitter:image:src"]/@content',
-            '//link[contains(@rel,"image_src")]/@href',
-            '//meta[@itemprop="image"]/@content',
-            '//img[@srcset][1]/@srcset',
-            '//img[@data-src][1]/@data-src',
-            '//img[@data-lazy-src][1]/@data-lazy-src',
-            '//article//img[@src][1]/@src',
-            '//main//img[@src][1]/@src',
+            ['query' => '//meta[@property="og:image"]/@content', 'score' => 100],
+            ['query' => '//meta[@property="og:image:url"]/@content', 'score' => 95],
+            ['query' => '//meta[@property="OG:IMAGE"]/@content', 'score' => 95],
+            ['query' => '//meta[@name="og:image"]/@content', 'score' => 92],
+            ['query' => '//meta[@name="twitter:image"]/@content', 'score' => 88],
+            ['query' => '//meta[@name="twitter:image:src"]/@content', 'score' => 88],
+            ['query' => '//link[contains(@rel,"image_src")]/@href', 'score' => 84],
+            ['query' => '//meta[@itemprop="image"]/@content', 'score' => 82],
+            ['query' => '(//article//*[self::img or self::source][@srcset][1]/@srcset)[1]', 'score' => 80],
+            ['query' => '(//article//img[contains(@class,"wp-post-image")][1]/@src)[1]', 'score' => 79],
+            ['query' => '(//article//img[@data-src][1]/@data-src)[1]', 'score' => 76],
+            ['query' => '(//article//img[@data-lazy-src][1]/@data-lazy-src)[1]', 'score' => 76],
+            ['query' => '(//article//img[@src][1]/@src)[1]', 'score' => 74],
+            ['query' => '(//main//*[self::img or self::source][@srcset][1]/@srcset)[1]', 'score' => 72],
+            ['query' => '(//main//img[@data-src][1]/@data-src)[1]', 'score' => 70],
+            ['query' => '(//main//img[@data-lazy-src][1]/@data-lazy-src)[1]', 'score' => 70],
+            ['query' => '(//main//img[@src][1]/@src)[1]', 'score' => 68],
         ];
 
-        foreach ($queries as $query) {
+        $bestUrl = null;
+        $bestScore = -1000;
+
+        foreach ($queries as $candidate) {
+            $query = $candidate['query'];
             try {
                 $nodes = $xpath->query($query);
             } catch (Throwable) {
@@ -207,12 +215,19 @@ class ArticlePageEnricher
 
             $normalized = $this->normalizeImageCandidate($value, $baseUrl);
 
-            if ($normalized !== null) {
-                return $normalized;
+            if ($normalized === null) {
+                continue;
+            }
+
+            $score = (int) $candidate['score'] - $this->imagePenaltyScore($normalized, $baseUrl);
+
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestUrl = $normalized;
             }
         }
 
-        return null;
+        return $bestUrl;
     }
 
     private function extractDescription(DOMXPath $xpath): ?string
@@ -390,6 +405,34 @@ class ArticlePageEnricher
         }
 
         return false;
+    }
+
+    private function imagePenaltyScore(string $url, string $baseUrl): int
+    {
+        $lower = Str::lower($url);
+        $penalty = 0;
+
+        if (str_contains($lower, 'cropped-microsoft_logo_element')) {
+            $penalty += 90;
+        }
+
+        if (preg_match('/(?:^|[\/_-])(logo|icon)(?:[\/_.-]|$)/i', $lower) === 1) {
+            $host = Str::lower((string) parse_url($baseUrl, PHP_URL_HOST));
+
+            if (! str_contains($host, 'github.blog')) {
+                $penalty += 45;
+            }
+        }
+
+        if (preg_match('/(?:^|[\/_-])(avatar|headshot|author|profile)(?:[\/_.-]|$)/i', $lower) === 1) {
+            $penalty += 120;
+        }
+
+        if (preg_match('/[?&](?:w|width|h|height)=([1-9]\d{0,2})(?:[&#]|$)/i', $url, $match) === 1 && (int) $match[1] < 220) {
+            $penalty += 40;
+        }
+
+        return $penalty;
     }
 
     private function normalizeImageCandidate(string $value, string $baseUrl): ?string
