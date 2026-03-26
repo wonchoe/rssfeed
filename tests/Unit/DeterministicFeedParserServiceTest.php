@@ -92,7 +92,8 @@ HTML;
 
         $this->assertCount(1, $items);
         $this->assertSame('A proper article title worth parsing', $items[0]->title);
-        $this->assertSame('This summary is long enough to be considered useful for article extraction.', $items[0]->summary);
+        $this->assertNull($items[0]->summary);
         $this->assertNull($items[0]->imageUrl);
+        $this->assertSame('This summary is long enough to be considered useful for article extraction.', $items[0]->meta['listing_summary']);
     }
 }

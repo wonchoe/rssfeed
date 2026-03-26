@@ -13,7 +13,7 @@ use Throwable;
 class ArticlePageEnricher
 {
     /**
-     * Fetch an article page and extract og:image + og:description (with caching).
+    * Fetch an article page and extract og:title + og:image + og:description (with caching).
      */
     public function enrich(string $articleUrl): ArticleEnrichmentData
     {
@@ -30,7 +30,7 @@ class ArticlePageEnricher
         $cacheKey = 'ingestion:enrichment:'.hash('sha256', Str::lower($normalized));
         $ttlMinutes = max(10, (int) config('ingestion.article_enrichment.ttl_minutes', 720));
 
-        /** @var array{image_url: ?string, description: ?string}|null $cached */
+        /** @var array{title: ?string, image_url: ?string, description: ?string}|null $cached */
         $cached = Cache::remember(
             $cacheKey,
             now()->addMinutes($ttlMinutes),
@@ -42,6 +42,7 @@ class ArticlePageEnricher
         }
 
         return new ArticleEnrichmentData(
+            title: is_string($cached['title'] ?? null) && $cached['title'] !== '' ? $cached['title'] : null,
             imageUrl: is_string($cached['image_url'] ?? null) && $cached['image_url'] !== '' ? $cached['image_url'] : null,
             description: is_string($cached['description'] ?? null) && $cached['description'] !== '' ? $cached['description'] : null,
         );
@@ -76,11 +77,11 @@ class ArticlePageEnricher
     }
 
     /**
-     * @return array{image_url: ?string, description: ?string}
+      * @return array{title: ?string, image_url: ?string, description: ?string}
      */
     private function enrichWithoutCache(string $articleUrl): array
     {
-        $empty = ['image_url' => null, 'description' => null];
+          $empty = ['title' => null, 'image_url' => null, 'description' => null];
 
         try {
             $response = Http::timeout(max(3, (int) config('ingestion.article_enrichment.timeout_seconds', 6)))
@@ -106,7 +107,7 @@ class ArticlePageEnricher
     }
 
     /**
-     * @return array{image_url: ?string, description: ?string}
+     * @return array{title: ?string, image_url: ?string, description: ?string}
      */
     private function extractFromHtml(string $html, string $baseUrl): array
     {
@@ -114,15 +115,52 @@ class ArticlePageEnricher
         $loaded = @$dom->loadHTML($html);
 
         if (! $loaded) {
-            return ['image_url' => null, 'description' => null];
+            return ['title' => null, 'image_url' => null, 'description' => null];
         }
 
         $xpath = new DOMXPath($dom);
 
         return [
+            'title' => $this->extractTitle($xpath),
             'image_url' => $this->extractImage($xpath, $baseUrl),
             'description' => $this->extractDescription($xpath),
         ];
+    }
+
+    private function extractTitle(DOMXPath $xpath): ?string
+    {
+        $queries = [
+            '//meta[@property="og:title"]/@content',
+            '//meta[@name="og:title"]/@content',
+            '//meta[@name="twitter:title"]/@content',
+            '//title/text()',
+        ];
+
+        foreach ($queries as $query) {
+            try {
+                $nodes = $xpath->query($query);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if ($nodes === false || $nodes->length === 0) {
+                continue;
+            }
+
+            $raw = trim((string) ($nodes->item(0)?->nodeValue ?? ''));
+
+            if ($raw === '') {
+                continue;
+            }
+
+            $clean = $this->sanitizeTitle($raw);
+
+            if ($clean !== null) {
+                return $clean;
+            }
+        }
+
+        return null;
     }
 
     private function extractImage(DOMXPath $xpath, string $baseUrl): ?string
@@ -207,6 +245,19 @@ class ArticlePageEnricher
         }
 
         return Str::limit($clean, 420, '...');
+    }
+
+    private function sanitizeTitle(string $raw): ?string
+    {
+        $decoded = html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $stripped = trim(strip_tags($decoded));
+        $clean = preg_replace('/\s+/u', ' ', $stripped) ?: '';
+
+        if ($clean === '' || mb_strlen($clean) < 12) {
+            return null;
+        }
+
+        return Str::limit($clean, 240, '...');
     }
 
     private function normalizeImageCandidate(string $value, string $baseUrl): ?string

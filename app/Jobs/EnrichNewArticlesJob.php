@@ -67,12 +67,16 @@ class EnrichNewArticlesJob implements ShouldQueue
                 continue;
             }
 
+            $sourceType = (string) data_get($article->normalized_payload, 'source_meta.source_type', '');
+            $shouldPreferOgMetadata = in_array($sourceType, ['html_schema', 'html'], true);
+
             $needsImage = $article->image_url === null
                 || $article->image_url === ''
                 || (is_string($article->image_url) && ! $enricher->isAcceptableImageUrl($article->image_url));
             $needsSummary = $article->summary === null || $article->summary === '';
+            $needsTitle = $shouldPreferOgMetadata;
 
-            if (! $needsImage && ! $needsSummary) {
+            if (! $needsImage && ! $needsSummary && ! $needsTitle) {
                 continue;
             }
 
@@ -99,6 +103,10 @@ class EnrichNewArticlesJob implements ShouldQueue
 
             if ($needsSummary && $enrichment->description !== null) {
                 $updates['summary'] = $enrichment->description;
+            }
+
+            if ($needsTitle && $enrichment->title !== null && $enrichment->title !== '') {
+                $updates['title'] = $enrichment->title;
             }
 
             if (! $enrichment->hasUsefulData() && $updates === []) {
