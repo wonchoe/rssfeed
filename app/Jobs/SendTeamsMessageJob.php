@@ -12,6 +12,7 @@ use App\Models\Subscription;
 use App\Models\TranslatedArticle;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Middleware\RateLimited;
 use Throwable;
 
 class SendTeamsMessageJob implements ShouldQueue

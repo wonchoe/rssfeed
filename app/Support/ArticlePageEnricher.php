@@ -258,7 +258,7 @@ class ArticlePageEnricher
     {
         $lower = Str::lower($url);
 
-        foreach (['avatar', 'profile', 'author', 'user', 'logo', 'icon', 'emoji', 'favicon', 'gravatar', 'sprite', 'badge', 'placeholder'] as $blocked) {
+        foreach (['avatar', 'profile', 'author', 'user', 'emoji', 'favicon', 'gravatar', 'sprite', 'placeholder'] as $blocked) {
             if (str_contains($lower, $blocked)) {
                 return false;
             }
