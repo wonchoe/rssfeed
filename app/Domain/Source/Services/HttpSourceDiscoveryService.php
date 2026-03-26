@@ -4,6 +4,7 @@ namespace App\Domain\Source\Services;
 
 use App\Data\Source\SourceCandidateData;
 use App\Data\Source\SourceDiscoveryResultData;
+use App\Domain\Parsing\Services\HeuristicHtmlPatternDetector;
 use App\Domain\Source\Contracts\SourceDiscoveryService;
 use App\Support\UrlNormalizer;
 use DOMDocument;
@@ -14,6 +15,12 @@ use Throwable;
 
 class HttpSourceDiscoveryService implements SourceDiscoveryService
 {
+    public function __construct(
+        private ?HeuristicHtmlPatternDetector $htmlPatternDetector = null,
+    ) {
+        $this->htmlPatternDetector ??= app(HeuristicHtmlPatternDetector::class);
+    }
+
     public function discover(string $sourceUrl): SourceDiscoveryResultData
     {
         $requestedUrl = UrlNormalizer::normalize($sourceUrl);
@@ -39,6 +46,13 @@ class HttpSourceDiscoveryService implements SourceDiscoveryService
                 }
 
                 if ($this->looksLikeHtml($contentType, $body)) {
+                    $htmlCandidate = $this->detectHtmlListingCandidate($requestedUrl, $body);
+
+                    if ($htmlCandidate !== null) {
+                        $candidates[] = $htmlCandidate;
+                        $warnings[] = 'Deterministic HTML listing pattern detected.';
+                    }
+
                     $htmlCandidates = $this->discoverFromHtml($requestedUrl, $body);
                     $candidates = [...$candidates, ...$htmlCandidates];
 
@@ -89,7 +103,13 @@ class HttpSourceDiscoveryService implements SourceDiscoveryService
 
     private function score(SourceCandidateData $candidate): int
     {
-        return ($this->typeWeight($candidate->type) * 1000) + (int) round($candidate->confidence * 100);
+        $score = ($this->typeWeight($candidate->type) * 1000) + (int) round($candidate->confidence * 100);
+
+        if ($candidate->type === 'html' && is_array($candidate->meta['schema_payload'] ?? null)) {
+            $score += 5500;
+        }
+
+        return $score;
     }
 
     private function typeWeight(string $type): int
@@ -290,6 +310,30 @@ class HttpSourceDiscoveryService implements SourceDiscoveryService
             confidence: 0.35,
             canonicalUrl: $url,
             meta: ['strategy' => 'fallback_unknown'],
+        );
+    }
+
+    private function detectHtmlListingCandidate(string $requestedUrl, string $html): ?SourceCandidateData
+    {
+        $schema = $this->htmlPatternDetector?->detect($html, $requestedUrl);
+
+        if (! is_array($schema) || ! (bool) ($schema['valid'] ?? false)) {
+            return null;
+        }
+
+        $confidence = is_numeric($schema['confidence'] ?? null)
+            ? (float) $schema['confidence']
+            : 0.7;
+
+        return new SourceCandidateData(
+            url: $requestedUrl,
+            type: 'html',
+            confidence: max(0.62, min(0.99, $confidence)),
+            canonicalUrl: $requestedUrl,
+            meta: [
+                'strategy' => 'html_pattern_detector',
+                'schema_payload' => $schema,
+            ],
         );
     }
 

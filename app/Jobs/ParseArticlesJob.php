@@ -4,8 +4,10 @@ namespace App\Jobs;
 
 use App\Data\Parsing\ParsedArticleData;
 use App\Domain\Parsing\Contracts\FeedParserService;
+use App\Domain\Parsing\Services\HeuristicHtmlPatternDetector;
 use App\Events\ArticlesParsed;
 use App\Models\ParseAttempt;
+use App\Models\ParserSchema;
 use App\Models\Source;
 use App\Models\SourceFetch;
 use App\Support\ParseAttemptTracker;
@@ -16,6 +18,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Throwable;
 
 class ParseArticlesJob implements ShouldQueue
@@ -52,6 +55,7 @@ class ParseArticlesJob implements ShouldQueue
         SourceHealthTracker $healthTracker,
         ParseAttemptTracker $attemptTracker,
         ParserSchemaRegistry $schemaRegistry,
+        HeuristicHtmlPatternDetector $htmlPatternDetector,
     ): void {
         $source = Source::query()->find($this->sourceId);
 
@@ -136,6 +140,39 @@ class ParseArticlesJob implements ShouldQueue
             sourceType: $source->source_type,
         );
 
+        $fallbackMeta = null;
+        $schemaRefreshMeta = null;
+
+        if ($parsedArticles === [] && $source->source_type === 'html') {
+            $schemaRefresh = $this->attemptHeuristicSchemaRefresh(
+                source: $source,
+                payload: $payload,
+                sourceUrl: $fetch->fetched_url,
+                feedParserService: $feedParserService,
+                schemaRegistry: $schemaRegistry,
+                htmlPatternDetector: $htmlPatternDetector,
+            );
+
+            if ($schemaRefresh !== null) {
+                $parsedArticles = $schemaRefresh['articles'];
+                $schemaRefreshMeta = $schemaRefresh['meta'];
+            }
+        }
+
+        if ($parsedArticles === [] && $source->source_type === 'html') {
+            $fallbackResult = $this->attemptFallbackCandidateParse(
+                source: $source,
+                feedParserService: $feedParserService,
+                attemptTracker: $attemptTracker,
+                attemptId: $attempt->id,
+            );
+
+            if ($fallbackResult !== null) {
+                $parsedArticles = $fallbackResult['articles'];
+                $fallbackMeta = $fallbackResult['meta'];
+            }
+        }
+
         $parsedCacheKey = sprintf('ingestion:parsed:%s:%s', $source->id, $fetch->content_hash);
         $serialized = array_map(fn (ParsedArticleData $article): array => [
             'url' => $article->url,
@@ -166,6 +203,8 @@ class ParseArticlesJob implements ShouldQueue
                     'cache_key' => $parsedCacheKey,
                     'parse_attempt_id' => $attempt->id,
                     'snapshot_id' => $snapshot?->id,
+                    'schema_refresh' => $schemaRefreshMeta,
+                    'fallback_candidate' => $fallbackMeta,
                     'reason' => $parsedCount === 0
                         ? 'Parser returned zero items for the current payload.'
                         : null,
@@ -176,6 +215,8 @@ class ParseArticlesJob implements ShouldQueue
         ]);
 
         if ($parsedCount === 0) {
+            $this->dispatchActiveSchemaValidationIfNeeded($source);
+
             $healthTracker->markFailure(
                 source: $source,
                 stage: PipelineStage::Parse->value,
@@ -344,5 +385,167 @@ class ParseArticlesJob implements ShouldQueue
             sourceId: (string) $source->id,
             context: $context,
         )->onQueue('repair');
+    }
+
+    private function dispatchActiveSchemaValidationIfNeeded(Source $source): void
+    {
+        $activeSchema = $source->activeParserSchema()->first();
+
+        if ($activeSchema === null) {
+            return;
+        }
+
+        if (! in_array($activeSchema->strategy_type, ['deterministic_html_schema', 'ai_xpath_schema'], true)) {
+            return;
+        }
+
+        ValidateSchemaJob::dispatch(
+            sourceId: (string) $source->id,
+            context: array_merge($this->context, [
+                'trigger' => 'active_schema_parse_empty',
+                'pipeline_stage' => 'schema_validate',
+                'parser_schema_id' => $activeSchema->id,
+            ]),
+        )->onQueue('repair');
+    }
+
+    /**
+     * @return array{articles:list<ParsedArticleData>,meta:array<string,mixed>}|null
+     */
+    private function attemptHeuristicSchemaRefresh(
+        Source $source,
+        string $payload,
+        string $sourceUrl,
+        FeedParserService $feedParserService,
+        ParserSchemaRegistry $schemaRegistry,
+        HeuristicHtmlPatternDetector $htmlPatternDetector,
+    ): ?array {
+        $schemaPayload = $htmlPatternDetector->detect($payload, $sourceUrl);
+
+        if (! is_array($schemaPayload) || ! (bool) ($schemaPayload['valid'] ?? false)) {
+            return null;
+        }
+
+        $previousSchema = $source->activeParserSchema()->first();
+        $confidence = is_numeric($schemaPayload['confidence'] ?? null)
+            ? (float) $schemaPayload['confidence']
+            : null;
+
+        $newSchema = $schemaRegistry->activateCustomSchema(
+            source: $source,
+            strategyType: 'deterministic_html_schema',
+            schemaPayload: array_merge($schemaPayload, [
+                'source_type' => 'html',
+                'resolved_from' => 'parse_recovery',
+                'resolved_at' => now()->toIso8601String(),
+            ]),
+            confidence: $confidence,
+            createdBy: 'rule_based_repair',
+        );
+
+        $parsed = $feedParserService->parse($payload, $sourceUrl, 'html');
+
+        if ($parsed === []) {
+            $newSchema->update([
+                'is_active' => false,
+                'is_shadow' => true,
+            ]);
+
+            if ($previousSchema instanceof ParserSchema) {
+                $previousSchema->update([
+                    'is_active' => true,
+                    'is_shadow' => false,
+                ]);
+            }
+
+            return null;
+        }
+
+        return [
+            'articles' => $parsed,
+            'meta' => [
+                'schema_id' => $newSchema->id,
+                'strategy' => $schemaPayload['strategy'] ?? null,
+                'confidence' => $schemaPayload['confidence'] ?? null,
+                'pattern_signature' => $schemaPayload['pattern_signature'] ?? null,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{articles:list<ParsedArticleData>,meta:array<string,mixed>}|null
+     */
+    private function attemptFallbackCandidateParse(
+        Source $source,
+        FeedParserService $feedParserService,
+        ParseAttemptTracker $attemptTracker,
+        int $attemptId,
+    ): ?array {
+        $fallbackCandidates = array_values(array_filter(
+            (array) data_get($source->meta ?? [], 'discovery.fallback_candidates', []),
+            fn ($candidate): bool => is_array($candidate) && in_array((string) ($candidate['type'] ?? ''), ['rss', 'atom', 'json_feed'], true),
+        ));
+
+        foreach ($fallbackCandidates as $candidate) {
+            $url = trim((string) ($candidate['url'] ?? ''));
+            $type = trim((string) ($candidate['type'] ?? ''));
+
+            if ($url === '' || $type === '') {
+                continue;
+            }
+
+            try {
+                $response = Http::retry(
+                    (int) config('ingestion.fetch.retry_times', 2),
+                    (int) config('ingestion.fetch.retry_sleep_ms', 300),
+                )
+                    ->timeout((int) config('ingestion.fetch.timeout_seconds', 20))
+                    ->withUserAgent((string) config('ingestion.fetch.user_agent'))
+                    ->accept('*/*')
+                    ->get($url);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (! $response->successful()) {
+                continue;
+            }
+
+            $fallbackPayload = $response->body();
+
+            if (trim($fallbackPayload) === '') {
+                continue;
+            }
+
+            $parsed = $feedParserService->parse($fallbackPayload, $url, $type);
+
+            if ($parsed === []) {
+                continue;
+            }
+
+            $attempt = ParseAttempt::query()->find($attemptId);
+
+            if ($attempt !== null) {
+                $attemptTracker->captureSnapshot(
+                    attempt: $attempt,
+                    payload: $fallbackPayload,
+                    headers: $response->headers(),
+                    finalUrl: $url,
+                    snapshotKind: 'parse_fallback_input',
+                );
+            }
+
+            return [
+                'articles' => $parsed,
+                'meta' => [
+                    'url' => $url,
+                    'type' => $type,
+                    'strategy' => $candidate['strategy'] ?? null,
+                    'http_status' => $response->status(),
+                ],
+            ];
+        }
+
+        return null;
     }
 }

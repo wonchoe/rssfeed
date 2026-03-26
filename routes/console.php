@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\PollSourcesJob;
+use App\Jobs\RevalidateActiveSchemasJob;
 use App\Jobs\SendEmailDigestJob;
 use App\Support\FeedGenerationWatchdog;
 use Illuminate\Foundation\Inspiring;
@@ -36,6 +37,11 @@ if (! app()->isLocal()) {
     })
         ->name('feed-generation-watchdog')
         ->everyMinute()
+        ->withoutOverlapping();
+
+    Schedule::job(new RevalidateActiveSchemasJob(), 'repair')
+        ->name('revalidate-active-schemas')
+        ->everyThirtyMinutes()
         ->withoutOverlapping();
 
     if ((bool) config('services.email_digest.enabled', false)) {

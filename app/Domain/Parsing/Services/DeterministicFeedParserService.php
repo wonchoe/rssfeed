@@ -497,13 +497,16 @@ class DeterministicFeedParserService implements FeedParserService
             $title = $this->cleanText($this->extractXPathValue($xpath, $titleXPath, $articleNode));
             $linkRaw = $this->extractXPathValue($xpath, $linkXPath, $articleNode);
 
-            if ($title === '' || $linkRaw === '') {
+                if ($title === '' || $linkRaw === '' || ! $this->isLikelyArticleTitle($title)) {
                 continue;
             }
 
             $summary = $this->cleanSummary($this->extractXPathValue($xpath, $summaryXPath, $articleNode));
+                $summary = $this->isLikelyArticleSummary($summary) ? $summary : '';
             $imageRaw = $this->extractXPathValue($xpath, $imageXPath, $articleNode);
-            $imageUrl = $imageRaw !== '' ? UrlNormalizer::absolute($imageRaw, $sourceUrl) : null;
+            $imageUrl = $imageRaw !== ''
+                ? $this->sanitizeImageUrl(UrlNormalizer::absolute($imageRaw, $sourceUrl))
+                : null;
             $dateRaw = $this->extractXPathValue($xpath, $dateXPath, $articleNode);
 
             $results[] = new ParsedArticleData(
@@ -524,11 +527,68 @@ class DeterministicFeedParserService implements FeedParserService
         $deduplicated = $this->deduplicateByUrl($results);
         $filtered = $this->filterLikelyArticleCandidates($deduplicated, $sourceUrl);
 
+
         if ($filtered !== []) {
             return $filtered;
         }
 
         return $deduplicated;
+    }
+
+    private function isLikelyArticleTitle(string $value): bool
+    {
+        $title = Str::lower(trim($value));
+        $length = mb_strlen($title);
+
+        if ($length < 12 || $length > 220) {
+            return false;
+        }
+
+        foreach (['read more', 'learn more', 'subscribe', 'sign up', 'log in', 'menu', 'search', 'back to', 'home'] as $blocked) {
+            if ($title === $blocked || str_contains($title, $blocked)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isLikelyArticleSummary(string $value): bool
+    {
+        $summary = Str::lower(trim($value));
+
+        if ($summary === '') {
+            return false;
+        }
+
+        if (mb_strlen($summary) < 24) {
+            return false;
+        }
+
+        foreach (['subscribe', 'privacy', 'cookie', 'sign up', 'log in'] as $blocked) {
+            if (str_contains($summary, $blocked)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function sanitizeImageUrl(?string $url): ?string
+    {
+        if ($url === null || trim($url) === '') {
+            return null;
+        }
+
+        $value = Str::lower(trim($url));
+
+        foreach (['avatar', 'profile', 'author', 'user', 'logo', 'icon', 'emoji', 'favicon', 'gravatar', 'sprite', 'badge', 'placeholder'] as $blocked) {
+            if (str_contains($value, $blocked)) {
+                return null;
+            }
+        }
+
+        return $url;
     }
 
     private function sourceByUrl(string $sourceUrl): ?Source

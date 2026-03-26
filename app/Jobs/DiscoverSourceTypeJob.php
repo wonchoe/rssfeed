@@ -101,6 +101,18 @@ class DiscoverSourceTypeJob implements ShouldQueue
         }
 
         $discoveredUrl = $primary->canonicalUrl ?? $primary->url;
+        $fallbackCandidates = array_values(array_map(
+            fn ($candidate): array => [
+                'url' => $candidate->canonicalUrl ?? $candidate->url,
+                'type' => $candidate->type,
+                'confidence' => $candidate->confidence,
+                'strategy' => $candidate->meta['strategy'] ?? null,
+            ],
+            array_filter(
+                $result->candidates,
+                fn ($candidate): bool => ($candidate->canonicalUrl ?? $candidate->url) !== $discoveredUrl || $candidate->type !== $primary->type,
+            ),
+        ));
         $sourceCatalog->attachAlias($source, $discoveredUrl);
 
         $source->update([
@@ -115,25 +127,43 @@ class DiscoverSourceTypeJob implements ShouldQueue
                     'confidence' => $primary->confidence,
                     'requested_url' => $result->requestedUrl,
                     'resolved_url' => $discoveredUrl,
+                    'fallback_candidates' => $fallbackCandidates,
                     'stage' => PipelineStage::SourceDiscovery->value,
                     'updated_at' => now()->toIso8601String(),
                 ],
             ]),
         ]);
         $sourceCatalog->updateSourceHostMeta($source, $discoveredUrl);
-        $schemaRegistry->ensureActiveFeedSchema(
-            source: $source,
-            sourceType: $primary->type,
-            confidence: $primary->confidence,
-            schemaPayload: [
-                'source_type' => $primary->type,
-                'strategy' => $primary->meta['strategy'] ?? null,
-                'requested_url' => $result->requestedUrl,
-                'resolved_url' => $discoveredUrl,
-                'required_fields' => ['title', 'url'],
-                'optional_fields' => ['summary', 'published_at'],
-            ],
-        );
+
+        if ($primary->type === 'html' && is_array($primary->meta['schema_payload'] ?? null)) {
+            $schemaRegistry->activateCustomSchema(
+                source: $source,
+                strategyType: 'deterministic_html_schema',
+                schemaPayload: array_merge((array) $primary->meta['schema_payload'], [
+                    'source_type' => 'html',
+                    'requested_url' => $result->requestedUrl,
+                    'resolved_url' => $discoveredUrl,
+                    'required_fields' => ['title', 'url'],
+                    'optional_fields' => ['summary', 'published_at', 'image_url'],
+                ]),
+                confidence: $primary->confidence,
+                createdBy: 'rule_based',
+            );
+        } else {
+            $schemaRegistry->ensureActiveFeedSchema(
+                source: $source,
+                sourceType: $primary->type,
+                confidence: $primary->confidence,
+                schemaPayload: [
+                    'source_type' => $primary->type,
+                    'strategy' => $primary->meta['strategy'] ?? null,
+                    'requested_url' => $result->requestedUrl,
+                    'resolved_url' => $discoveredUrl,
+                    'required_fields' => ['title', 'url'],
+                    'optional_fields' => ['summary', 'published_at'],
+                ],
+            );
+        }
         $healthTracker->markSuccess($source, PipelineStage::SourceDiscovery->value, [
             'confidence' => $primary->confidence,
             'source_type' => $primary->type,

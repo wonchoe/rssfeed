@@ -72,6 +72,9 @@ return [
     'schema_validation_activate_score' => env('INGESTION_SCHEMA_VALIDATION_ACTIVATE_SCORE', 70),
     'schema_validation_min_items' => env('INGESTION_SCHEMA_VALIDATION_MIN_ITEMS', 3),
     'schema_validation_snapshot_limit' => env('INGESTION_SCHEMA_VALIDATION_SNAPSHOT_LIMIT', 3),
+    'schema_revalidation_enabled' => (bool) env('INGESTION_SCHEMA_REVALIDATION_ENABLED', true),
+    'schema_revalidation_interval_hours' => env('INGESTION_SCHEMA_REVALIDATION_INTERVAL_HOURS', 12),
+    'schema_revalidation_max_dispatch_per_cycle' => env('INGESTION_SCHEMA_REVALIDATION_MAX_DISPATCH_PER_CYCLE', 50),
     'capture_snapshots' => (bool) env('INGESTION_CAPTURE_SNAPSHOTS', true),
     'snapshot_max_bytes' => env('INGESTION_SNAPSHOT_MAX_BYTES', 250000),
     'preview_image_enrichment' => [

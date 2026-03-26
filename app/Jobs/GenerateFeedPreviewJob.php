@@ -226,6 +226,20 @@ class GenerateFeedPreviewJob implements ShouldQueue
                 ]),
             ]);
 
+            if ($sourceType === 'html' && is_array($candidate->meta['schema_payload'] ?? null)) {
+                $schemaRegistry->activateCustomSchema(
+                    source: $source,
+                    strategyType: 'deterministic_html_schema',
+                    schemaPayload: array_merge((array) $candidate->meta['schema_payload'], [
+                        'source_type' => 'html',
+                        'requested_url' => $generation->requested_url,
+                        'resolved_url' => $resolvedUrl,
+                    ]),
+                    confidence: $candidate->confidence,
+                    createdBy: 'rule_based_preview',
+                );
+            }
+
             $response = Http::retry(
                 (int) config('ingestion.fetch.retry_times', 2),
                 (int) config('ingestion.fetch.retry_sleep_ms', 300),
@@ -295,6 +309,15 @@ class GenerateFeedPreviewJob implements ShouldQueue
                 sourceUrl: $resolvedUrl,
                 sourceType: $sourceType,
             );
+
+            if ($parsed === [] && $sourceType === 'html') {
+                $parsed = $this->attemptFeedPreviewFallback(
+                    candidates: $discovery->candidates,
+                    sourceUrl: $resolvedUrl,
+                    feedParserService: $feedParserService,
+                );
+            }
+
             $parsed = $this->enrichParsedArticlesWithImages($parsed, $articleImageResolver);
 
             $aiPreviewMeta = null;
@@ -725,6 +748,57 @@ class GenerateFeedPreviewJob implements ShouldQueue
             'parsed' => $parsed,
             'meta' => $meta,
         ];
+    }
+
+    /**
+     * @param  list<\App\Data\Source\SourceCandidateData>  $candidates
+     * @return list<ParsedArticleData>
+     */
+    private function attemptFeedPreviewFallback(
+        array $candidates,
+        string $sourceUrl,
+        FeedParserService $feedParserService,
+    ): array {
+        foreach ($candidates as $candidate) {
+            if (! in_array($candidate->type, ['rss', 'atom', 'json_feed'], true)) {
+                continue;
+            }
+
+            $candidateUrl = UrlNormalizer::normalize($candidate->canonicalUrl ?? $candidate->url);
+
+            if ($candidateUrl === $sourceUrl) {
+                continue;
+            }
+
+            try {
+                $response = Http::retry(
+                    (int) config('ingestion.fetch.retry_times', 2),
+                    (int) config('ingestion.fetch.retry_sleep_ms', 300),
+                )
+                    ->timeout((int) config('ingestion.fetch.timeout_seconds', 20))
+                    ->withUserAgent((string) config('ingestion.fetch.user_agent'))
+                    ->accept('*/*')
+                    ->get($candidateUrl);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (! $response->successful()) {
+                continue;
+            }
+
+            $parsed = $feedParserService->parse(
+                payload: $response->body(),
+                sourceUrl: $candidateUrl,
+                sourceType: $candidate->type,
+            );
+
+            if ($parsed !== []) {
+                return $parsed;
+            }
+        }
+
+        return [];
     }
 
     /**

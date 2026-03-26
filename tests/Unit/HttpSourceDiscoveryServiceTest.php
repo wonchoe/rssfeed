@@ -144,4 +144,51 @@ XML,
         $this->assertSame('rss', $result->primaryCandidate->type);
         $this->assertSame('https://api.axios.com/feed', $result->primaryCandidate->url);
     }
+
+    public function test_discovery_prefers_detected_html_listing_pattern_before_feed_fallback(): void
+    {
+        Http::fake([
+            'https://github.blog/changelog' => Http::response(
+                <<<'HTML'
+<html>
+  <head>
+    <link rel="alternate" type="application/rss+xml" href="https://github.blog/changelog/feed/" />
+  </head>
+  <body>
+    <main>
+      <article class="news-card">
+        <time datetime="2026-03-25">Mar.25</time>
+        <h2><a class="article-title" href="https://github.blog/changelog/2026-03-25-first-item">First changelog item title</a></h2>
+        <p>This is a useful summary for the first changelog item with enough text.</p>
+        <img src="https://github.blog/images/first-item.jpg" />
+      </article>
+      <article class="news-card">
+        <time datetime="2026-03-24">Mar.24</time>
+        <h2><a class="article-title" href="https://github.blog/changelog/2026-03-24-second-item">Second changelog item title</a></h2>
+        <p>This is a useful summary for the second changelog item with enough text.</p>
+      </article>
+      <article class="news-card">
+        <time datetime="2026-03-23">Mar.23</time>
+        <h2><a class="article-title" href="https://github.blog/changelog/2026-03-23-third-item">Third changelog item title</a></h2>
+        <p>This is a useful summary for the third changelog item with enough text.</p>
+      </article>
+    </main>
+  </body>
+</html>
+HTML,
+                200,
+                ['Content-Type' => 'text/html; charset=UTF-8'],
+            ),
+            '*' => Http::response('not found', 404),
+        ]);
+
+        $service = new HttpSourceDiscoveryService;
+        $result = $service->discover('https://github.blog/changelog');
+
+        $this->assertNotNull($result->primaryCandidate);
+        $this->assertSame('html', $result->primaryCandidate->type);
+        $this->assertIsArray($result->primaryCandidate->meta['schema_payload'] ?? null);
+        $this->assertContains('Deterministic HTML listing pattern detected.', $result->warnings);
+        $this->assertTrue(collect($result->candidates)->contains(fn ($candidate): bool => $candidate->url === 'https://github.blog/changelog/feed' && $candidate->type === 'rss'));
+    }
 }
