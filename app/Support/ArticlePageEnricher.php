@@ -290,6 +290,15 @@ class ArticlePageEnricher
             return false;
         }
 
+        // Microsoft CDN dynamic endpoints (e.g. /is/content/… or /is/image/…)
+        // without a file extension return non-image content (text/plain, video/*).
+        if (preg_match('#/is/(?:content|image)/#i', $path) === 1) {
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            if ($ext === '') {
+                return false;
+            }
+        }
+
         $basename = basename($path);
 
         if ($basename !== '' && preg_match('/^\d+$/', $basename) === 1) {
