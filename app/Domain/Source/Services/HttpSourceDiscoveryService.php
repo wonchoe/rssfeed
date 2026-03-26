@@ -59,6 +59,13 @@ class HttpSourceDiscoveryService implements SourceDiscoveryService
                     if ($htmlCandidates !== []) {
                         $warnings[] = 'Feed autodiscovery used from HTML link tags.';
                     }
+
+                    $actionLinkCandidates = $this->discoverFeedActionLinksFromHtml($requestedUrl, $body);
+                    $candidates = [...$candidates, ...$actionLinkCandidates];
+
+                    if ($actionLinkCandidates !== []) {
+                        $warnings[] = 'Feed discovered via explicit RSS/feed action link in HTML.';
+                    }
                 }
             }
         } catch (Throwable $exception) {
@@ -310,6 +317,135 @@ class HttpSourceDiscoveryService implements SourceDiscoveryService
             confidence: 0.35,
             canonicalUrl: $url,
             meta: ['strategy' => 'fallback_unknown'],
+        );
+    }
+
+    /**
+     * @return list<SourceCandidateData>
+     */
+    private function discoverFeedActionLinksFromHtml(string $requestedUrl, string $html): array
+    {
+        $dom = new DOMDocument;
+        $loaded = @$dom->loadHTML($html);
+
+        if (! $loaded) {
+            return [];
+        }
+
+        $xpath = new DOMXPath($dom);
+        $nodes = $xpath->query('//a[@href]');
+
+        if ($nodes === false) {
+            return [];
+        }
+
+        $candidates = [];
+        $seen = [];
+
+        foreach ($nodes as $node) {
+            $href = trim((string) $node->attributes?->getNamedItem('href')?->textContent);
+
+            if ($href === '') {
+                continue;
+            }
+
+            $label = trim(implode(' ', array_filter([
+                (string) $node->textContent,
+                (string) $node->attributes?->getNamedItem('aria-label')?->textContent,
+                (string) $node->attributes?->getNamedItem('title')?->textContent,
+                (string) $node->attributes?->getNamedItem('data-bi-cn')?->textContent,
+                (string) $node->attributes?->getNamedItem('data-bi-ecn')?->textContent,
+            ])));
+
+            if (! $this->looksLikeExplicitFeedActionLink($href, $label)) {
+                continue;
+            }
+
+            $discoveredUrl = UrlNormalizer::absolute($href, $requestedUrl);
+            $normalizedUrl = UrlNormalizer::normalize($discoveredUrl);
+
+            if (isset($seen[$normalizedUrl])) {
+                continue;
+            }
+
+            $candidate = $this->validateLinkedFeedCandidate($normalizedUrl, $requestedUrl);
+
+            if ($candidate === null) {
+                continue;
+            }
+
+            $seen[$normalizedUrl] = true;
+            $candidates[] = $candidate;
+        }
+
+        return $candidates;
+    }
+
+    private function looksLikeExplicitFeedActionLink(string $href, string $label): bool
+    {
+        $hrefValue = Str::lower($href);
+        $labelValue = Str::lower($label);
+
+        $labelSignals = [
+            'rss',
+            'atom',
+            'feed',
+            'subscribe via rss',
+            'subscribe',
+            'xml',
+        ];
+
+        $hrefSignals = [
+            '/rss',
+            'rss.',
+            '/feed',
+            'feed/',
+            'atom',
+            '.xml',
+            '/xml',
+        ];
+
+        $labelMatched = collect($labelSignals)->contains(fn (string $signal): bool => str_contains($labelValue, $signal));
+        $hrefMatched = collect($hrefSignals)->contains(fn (string $signal): bool => str_contains($hrefValue, $signal));
+
+        return $labelMatched && $hrefMatched;
+    }
+
+    private function validateLinkedFeedCandidate(string $feedUrl, string $requestedUrl): ?SourceCandidateData
+    {
+        try {
+            $response = Http::timeout(max(3, (int) config('ingestion.discovery.feed_probe_timeout_seconds', 8)))
+                ->withUserAgent((string) config('ingestion.fetch.user_agent'))
+                ->accept('application/rss+xml, application/atom+xml, application/feed+json, application/xml, text/xml, */*')
+                ->get($feedUrl);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $candidate = $this->detectDirectFeedCandidate(
+            $feedUrl,
+            $response->body(),
+            Str::lower((string) $response->header('Content-Type', '')),
+        );
+
+        if ($candidate === null || ! in_array($candidate->type, ['rss', 'atom', 'json_feed'], true)) {
+            return null;
+        }
+
+        return new SourceCandidateData(
+            url: $candidate->url,
+            type: $candidate->type,
+            confidence: max(0.84, (float) $candidate->confidence),
+            title: $candidate->title,
+            canonicalUrl: $candidate->canonicalUrl,
+            meta: array_merge((array) $candidate->meta, [
+                'strategy' => 'html_action_link',
+                'from_url' => $requestedUrl,
+            ]),
         );
     }
 

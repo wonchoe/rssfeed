@@ -191,4 +191,53 @@ HTML,
         $this->assertContains('Deterministic HTML listing pattern detected.', $result->warnings);
         $this->assertTrue(collect($result->candidates)->contains(fn ($candidate): bool => $candidate->url === 'https://github.blog/changelog/feed' && $candidate->type === 'rss'));
     }
+
+    public function test_discovery_uses_explicit_rss_action_link_for_client_rendered_listing_pages(): void
+    {
+        Http::fake([
+            'https://azure.microsoft.com/en-us/updates' => Http::response(
+                <<<'HTML'
+<html>
+  <head><title>Azure updates</title></head>
+  <body>
+    <main>
+      <h1>Azure Updates</h1>
+      <a href="https://www.microsoft.com/releasecommunications/api/v2/azure/rss" aria-label="Subscribe via RSS">Subscribe via RSS</a>
+      <div api="https://www.microsoft.com/releasecommunications/api/v2/azure">
+        <ul id="accordion-container"></ul>
+      </div>
+    </main>
+  </body>
+</html>
+HTML,
+                200,
+                ['Content-Type' => 'text/html; charset=UTF-8'],
+            ),
+            'https://www.microsoft.com/releasecommunications/api/v2/azure/rss' => Http::response(
+                <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Azure Item</title>
+      <link>https://azure.microsoft.com/en-us/updates/demo</link>
+      <description>Demo</description>
+    </item>
+  </channel>
+</rss>
+XML,
+                200,
+                ['Content-Type' => 'application/rss+xml; charset=UTF-8'],
+            ),
+            '*' => Http::response('not found', 404),
+        ]);
+
+        $service = new HttpSourceDiscoveryService;
+        $result = $service->discover('https://azure.microsoft.com/en-us/updates');
+
+        $this->assertNotNull($result->primaryCandidate);
+        $this->assertSame('rss', $result->primaryCandidate->type);
+        $this->assertSame('https://www.microsoft.com/releasecommunications/api/v2/azure/rss', $result->primaryCandidate->url);
+        $this->assertContains('Feed discovered via explicit RSS/feed action link in HTML.', $result->warnings);
+    }
 }
