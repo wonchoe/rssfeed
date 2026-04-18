@@ -1,0 +1,82 @@
+[
+    {
+        "site": "https://techcrunch.com/startups/",
+        "article_url": "https://techcrunch.com/",
+        "title": "TechCrunch | Startup and Technology News",
+        "summary": "TechCrunch | Reporting on the business of technology, startups, venture capital funding, and Silicon Valley",
+        "image_url": "https://techcrunch.com/wp-content/uploads/2018/04/tc-logo-2018-square-reverse2x.png",
+        "error": null
+    },
+    {
+        "site": "https://www.microsoft.com/en-us/startups/blog/",
+        "article_url": "https://www.microsoft.com/en-us/startups/blog/content-type/founder-advice",
+        "title": "Founder advice Archives - Microsoft for Startups Blog",
+        "summary": "See the latest Founder advice brought to you by the experts at Microsoft for Startups Blog.",
+        "image_url": "https://www.microsoft.com/en-us/startups/blog/wp-content/uploads/2024/11/microsoft_logo.webp",
+        "error": null
+    },
+    {
+        "site": "https://www.datadoghq.com/blog/",
+        "article_url": "https://www.datadoghq.com/state-of-devsecops",
+        "title": "State of DevSecOps | Datadog",
+        "summary": "For our 2026 State of DevSecOps report, we analyzed data from thousands of cloud environments to assess trends in application security posture and adoption of DevSecOps best practices.",
+        "image_url": "https://imgix.datadoghq.com/img/blog/state-of-devsecops/state-of-devsecops-2026/hero-final.png?fit=crop&h=630&w=1200",
+        "error": null
+    },
+    {
+        "site": "https://stripe.com/blog",
+        "article_url": "https://stripe.com/blog/product",
+        "title": "Stripe Blog: Product",
+        "summary": "Spotlights and updates on Stripe's suite of payments, financial services, and business operations products",
+        "image_url": "https://images.stripeassets.com/fzn2n1nzq965/K3ReOAHQ6AnjETRznub9X/b33c5613eb9ad0ff3c2908c524f14aa0/social.png?q=80",
+        "error": null
+    },
+    {
+        "site": "https://netflixtechblog.com/",
+        "article_url": null,
+        "title": null,
+        "summary": null,
+        "image_url": null,
+        "error": "cURL error 60: SSL certificate problem: unable to get local issuer certificate (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for https://netflixtechblog.com/"
+    },
+    {
+        "site": "https://engineering.fb.com/",
+        "article_url": "https://engineering.fb.com/2026/03/18/ml-applications/friend-bubbles-enhancing-social-discovery-on-facebook-reels",
+        "title": "Friend Bubbles: Enhancing Social Discovery on Facebook Reels",
+        "summary": "Friend bubbles in Facebook Reels highlight Reels your friends have liked or reacted to, helping you discover new content and making it easier to connect over shared interests. This article explains\u2026",
+        "image_url": "https://engineering.fb.com/wp-content/uploads/2026/03/Facebook-Friend-Bubbles.png",
+        "error": null
+    },
+    {
+        "site": "https://dropbox.tech/",
+        "article_url": null,
+        "title": null,
+        "summary": null,
+        "image_url": null,
+        "error": "no_article_link"
+    },
+    {
+        "site": "https://www.mongodb.com/company/blog",
+        "article_url": "https://www.mongodb.com/company/blog/product-release-announcements/introducing-mongodb-atlas-log-integration",
+        "title": "Observability and OpenTelemetry: Introducing MongoDB Atlas Log Integration",
+        "summary": "MongoDB Atlas Log Integration delivers telemetry to third-party observability platforms and Otel-compatible endpoints.",
+        "image_url": "https://images.contentstack.io/v3/assets/blt7151619cb9560896/blt284d4c624059ddcc/69b204a01c794a296e3274da/Observability_and_OpenTelemetry-_Introducing_MongoDB_Atlas_Log_Integration_-_blog_meta_image.png",
+        "error": null
+    },
+    {
+        "site": "https://www.notion.com/blog",
+        "article_url": "https://www.notion.com/blog/notion-expands-data-residency-to-japan-south-korea",
+        "title": "Notion is expanding data residency to Japan and South Korea",
+        "summary": "We\u2019re excited to share that starting in May 2026, Enterprise plan customers in Japan and South Korea will be able to choose to keep their Notion data at rest in-region.",
+        "image_url": "https://images.ctfassets.net/spoqsaf9291f/2jVlQqNhYhHAvMM2MSrURI/20d49dcee426f8e75278915ae0a2c2bd/data-residency.png",
+        "error": null
+    },
+    {
+        "site": "https://blog.discord.com/",
+        "article_url": null,
+        "title": null,
+        "summary": null,
+        "image_url": null,
+        "error": "no_article_link"
+    }
+]
